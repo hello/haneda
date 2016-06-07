@@ -32,39 +32,29 @@
   [sense-id]
   "dummy")
 
-(defn byte-slice
-  [^bytes array start end]
-  (->> array (drop start) (take end)))
-
 (defn preamble
   ^Streaming$Preamble [^bytes preamble-bytes]
   (Streaming$Preamble/parseFrom preamble-bytes))
-
-(defn parse-hmac
-  [^bytes hmac ^bytes payload])
 
 (defn hmac
   [key data]
   ;; TODO
   (byte-array (range hmac-size-bytes)))
 
-;; TODO aslice function that's way faster than drop/take
+(defn aslice
+  ^bytes [^bytes array from to]
+  (java.util.Arrays/copyOfRange array from to))
 
 (defn parse-chunk
-  [key chunk]
-  (let [payload-length (- (count chunk) hmac-size-bytes)
-        payload-chunk (byte-array (take payload-length chunk))
-        hmac-chunk (byte-array (take-last hmac-size-bytes chunk))
+  [key ^bytes chunk]
+  (let [payload-length (- (alength chunk) hmac-size-bytes)
+        payload-chunk (aslice chunk 0 payload-length)
+        hmac-chunk (aslice chunk payload-length (alength chunk))
         computed-hmac (hmac key payload-chunk)]
-    (prn "payload" payload-chunk)
-    (prn "hmac" hmac-chunk)
-    (prn "computed" computed-hmac)
-    ;; TODO throw 400
-    (when-not (= hmac-chunk computed-hmac)
+    ;; TODO return error ack
+    (when-not (java.util.Arrays/equals hmac-chunk computed-hmac)
       )
     payload-chunk))
-
-;; TODO convert to vec and use sub-vec instead of drop/take everywhere
 
 (defn decode-length
   [^bytes length-bytes]
@@ -85,23 +75,22 @@
   :payload-bytes - The raw bytes of the payload"
   [key ^bytes message]
   (let [message-length (alength message)
-        preamble-length (->> message
-                          (take length-size-bytes)
-                          byte-array
+        preamble-length (-> message
+                          (aslice 0 length-size-bytes)
                           decode-length)
-        preamble-bytes (->> message (drop length-size-bytes) (take preamble-length) byte-array)
+        preamble-bytes (aslice message length-size-bytes (+ length-size-bytes preamble-length))
         preamble (preamble preamble-bytes)
-        payload-length (->> message
-                        (drop (+ length-size-bytes preamble-length))
-                        (take length-size-bytes)
+        payload-length-start (+ length-size-bytes preamble-length)
+        payload-length-end (+ payload-length-start length-size-bytes)
+        payload-length (-> message
+                        (aslice payload-length-start payload-length-end)
                         byte-array
                         decode-length)
         chunks (partition-all max-chunk-size message)
-        _ (prn chunks)
         ;; TODO first chunk may use different hash function from remaining chunks
         payload-bytes (->> (rest chunks)
                         (cons (drop (+ length-size-bytes preamble-length length-size-bytes) (first chunks)))
-                        (mapcat (partial parse-chunk key)))]
+                        (mapcat (comp (partial parse-chunk key) byte-array)))]
     {:preamble preamble
      :payload-bytes payload-bytes}))
 
@@ -131,8 +120,10 @@
 
 (defn dispatch-message-async
   [sense-id key message]
-  (->> message
-    bs/to-byte-array))
+  (let [{:keys [preamble payload-bytes]} (decode-message key message)]
+    ;; TODO dispatch based on preamble
+    ;; Send to relevant service, reply with ack (with ID) and response
+    ))
 
 (defn dispatch-handler
   [request]
