@@ -1,4 +1,5 @@
 (ns com.hello.haneda.server
+  "Haneda websocket server."
   (:require
     [aleph.http :as http]
     [com.hello.haneda

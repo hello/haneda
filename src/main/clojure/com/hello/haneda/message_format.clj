@@ -1,4 +1,15 @@
 (ns com.hello.haneda.message-format
+  "Encoding/decoding custom Hello binary protocol, including HMAC computation.
+
+  A message from sense may be chunked.
+
+  First chunk:
+  Length | Preamble PB | Length (of total PB) | PB Payload | Reserved | HMAC
+
+  Following chunks:
+  PB Payload Continued | Reserved | HMAC
+
+  More details: https://hello.hackpad.com/PB-Streams-6B01vzYAlvi"
   (:import
     [com.hello.haneda.api
       Streaming$Preamble
@@ -48,16 +59,13 @@
     (.getInt buffer)))
 
 (defn decode-message
-  "A message from sense may be chunked.
-  First chunk:
-  Length | Preamble PB | Length (of total PB) | PB Payload | Reserved | HMAC
-  Following chunks:
-  PB Payload Continued | Reserved | HMAC
+  "Given byte[] key and byte[] message, decodes message and returns a map with keys
 
-  Returns a map with keys
   :preamble - The Preamble protobuf
-  :payload-bytes - The raw bytes of the payload"
-  [key ^bytes message]
+  :payload-bytes - The raw bytes of the payload. Will be nil if the HMAC does not match.
+  :preamble-length - Length of the serialized preamble, in bytes
+  :payload-length - Length of the serialized payload, in bytes"
+  [^bytes key ^bytes message]
   (let [message-length (alength message)
         preamble-length (-> message
                           (aslice 0 length-size-bytes)
@@ -99,6 +107,14 @@
             hmac)))
 
 (defn encode-message
+  "Encode the payload as a message. Only works for single-chunk messages currently.
+
+  Arguments:
+  key (byte[]) - Key to use for hmac computation.
+  pb-type (Streaming.Preamble.pb_type) - The pb_type contained in the payload.
+  payload (byte[]) - Serialized protobuf payload.
+  id (long, optional field) - The id of this message to include in Preamble.
+                              Will not be included if absent."
   ^bytes [^bytes key
           ^Streaming$Preamble$pb_type pb-type
           ^bytes payload

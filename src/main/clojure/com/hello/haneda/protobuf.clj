@@ -2,7 +2,8 @@
   (:import
     [com.hello.haneda.api
       Async$Ack
-      Async$Ack$Status]))
+      Async$Ack$Status
+      Streaming$Preamble$pb_type]))
 
 (def pb-type
   {:ack Streaming$Preamble$pb_type/ACK
