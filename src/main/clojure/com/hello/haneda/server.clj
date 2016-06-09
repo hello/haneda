@@ -16,6 +16,10 @@
     [javax.crypto Mac]
     [javax.crypto.spec SecretKeySpec]))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;; Server ;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defn- request->sense-id
   [request]
   (-> request :headers (get "X-Hello-Sense-Id")))
@@ -33,7 +37,7 @@
 
 (defn get-key
   [sense-id]
-  "dummy")
+  (.getBytes sense-id))
 
 (defn preamble
   ^Streaming$Preamble [^bytes preamble-bytes]
@@ -177,6 +181,7 @@
 
 (defn dispatch-handler
   [request]
+  (prn request)
   (if-let [sense-id (request->sense-id request)]
     (->
       ;; establish the websocket connection
@@ -202,10 +207,41 @@
 
 (defn start-server
   []
-  (http/start-server handler {:port 11000}))
+  (http/start-server (handler) {:port 11000}))
 
 (defn -main
   [& args]
   (let [server (start-server)]
     (println "server started " server)
     server))
+
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;; Client ;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defrecord Client [conn last-id]
+
+  java.io.Closeable
+  (close [_]
+    (.close conn)))
+
+(defn client
+  ([sense-id url]
+    (map->Client
+      {:conn @(http/websocket-client url {:headers {"X-Hello-Sense-Id" sense-id}})
+       :last-id (atom 0)}))
+  ([sense-id]
+    (client sense-id "ws://localhost:11000/dispatch")))
+
+(defn receive-message
+  [{:keys [conn]} key]
+  (d/chain
+    (s/take! conn)
+    (partial decode-message key)))
+
+(defn send-message
+  [{:keys [conn last-id]} ^bytes key ^bytes request-payload]
+  (let [message (encode-message key (:messeji pb-type) request-payload (swap! last-id inc))]
+    (s/put! conn message)))
