@@ -13,17 +13,22 @@ public final class Async {
       com.google.protobuf.MessageOrBuilder {
 
     /**
-     * <code>repeated uint64 message_id = 1;</code>
+     * <code>optional uint64 message_id = 1;</code>
      */
-    java.util.List<java.lang.Long> getMessageIdList();
+    boolean hasMessageId();
     /**
-     * <code>repeated uint64 message_id = 1;</code>
+     * <code>optional uint64 message_id = 1;</code>
      */
-    int getMessageIdCount();
+    long getMessageId();
+
     /**
-     * <code>repeated uint64 message_id = 1;</code>
+     * <code>optional .Ack.Status status = 2;</code>
      */
-    long getMessageId(int index);
+    boolean hasStatus();
+    /**
+     * <code>optional .Ack.Status status = 2;</code>
+     */
+    com.hello.haneda.api.Async.Ack.Status getStatus();
   }
   /**
    * Protobuf type {@code Ack}
@@ -78,24 +83,19 @@ public final class Async {
               break;
             }
             case 8: {
-              if (!((mutable_bitField0_ & 0x00000001) == 0x00000001)) {
-                messageId_ = new java.util.ArrayList<java.lang.Long>();
-                mutable_bitField0_ |= 0x00000001;
-              }
-              messageId_.add(input.readUInt64());
+              bitField0_ |= 0x00000001;
+              messageId_ = input.readUInt64();
               break;
             }
-            case 10: {
-              int length = input.readRawVarint32();
-              int limit = input.pushLimit(length);
-              if (!((mutable_bitField0_ & 0x00000001) == 0x00000001) && input.getBytesUntilLimit() > 0) {
-                messageId_ = new java.util.ArrayList<java.lang.Long>();
-                mutable_bitField0_ |= 0x00000001;
+            case 16: {
+              int rawValue = input.readEnum();
+              com.hello.haneda.api.Async.Ack.Status value = com.hello.haneda.api.Async.Ack.Status.valueOf(rawValue);
+              if (value == null) {
+                unknownFields.mergeVarintField(2, rawValue);
+              } else {
+                bitField0_ |= 0x00000002;
+                status_ = value;
               }
-              while (input.getBytesUntilLimit() > 0) {
-                messageId_.add(input.readUInt64());
-              }
-              input.popLimit(limit);
               break;
             }
           }
@@ -106,9 +106,6 @@ public final class Async {
         throw new com.google.protobuf.InvalidProtocolBufferException(
             e.getMessage()).setUnfinishedMessage(this);
       } finally {
-        if (((mutable_bitField0_ & 0x00000001) == 0x00000001)) {
-          messageId_ = java.util.Collections.unmodifiableList(messageId_);
-        }
         this.unknownFields = unknownFields.build();
         makeExtensionsImmutable();
       }
@@ -140,30 +137,172 @@ public final class Async {
       return PARSER;
     }
 
-    public static final int MESSAGE_ID_FIELD_NUMBER = 1;
-    private java.util.List<java.lang.Long> messageId_;
     /**
-     * <code>repeated uint64 message_id = 1;</code>
+     * Protobuf enum {@code Ack.Status}
      */
-    public java.util.List<java.lang.Long>
-        getMessageIdList() {
+    public enum Status
+        implements com.google.protobuf.ProtocolMessageEnum {
+      /**
+       * <code>SUCCESS = 1;</code>
+       *
+       * <pre>
+       * All good in the hood (2xx response)
+       * </pre>
+       */
+      SUCCESS(0, 1),
+      /**
+       * <code>CLIENT_ENCODING_ERROR = 2;</code>
+       *
+       * <pre>
+       * Message was improperly formatted before reading payload
+       * </pre>
+       */
+      CLIENT_ENCODING_ERROR(1, 2),
+      /**
+       * <code>CLIENT_REQUEST_ERROR = 3;</code>
+       *
+       * <pre>
+       * Payload of the message was incorrect (4xx error)
+       * </pre>
+       */
+      CLIENT_REQUEST_ERROR(2, 3),
+      /**
+       * <code>SERVER_ERROR = 4;</code>
+       *
+       * <pre>
+       * A server-side error occurred (5xx error)
+       * </pre>
+       */
+      SERVER_ERROR(3, 4),
+      ;
+
+      /**
+       * <code>SUCCESS = 1;</code>
+       *
+       * <pre>
+       * All good in the hood (2xx response)
+       * </pre>
+       */
+      public static final int SUCCESS_VALUE = 1;
+      /**
+       * <code>CLIENT_ENCODING_ERROR = 2;</code>
+       *
+       * <pre>
+       * Message was improperly formatted before reading payload
+       * </pre>
+       */
+      public static final int CLIENT_ENCODING_ERROR_VALUE = 2;
+      /**
+       * <code>CLIENT_REQUEST_ERROR = 3;</code>
+       *
+       * <pre>
+       * Payload of the message was incorrect (4xx error)
+       * </pre>
+       */
+      public static final int CLIENT_REQUEST_ERROR_VALUE = 3;
+      /**
+       * <code>SERVER_ERROR = 4;</code>
+       *
+       * <pre>
+       * A server-side error occurred (5xx error)
+       * </pre>
+       */
+      public static final int SERVER_ERROR_VALUE = 4;
+
+
+      public final int getNumber() { return value; }
+
+      public static Status valueOf(int value) {
+        switch (value) {
+          case 1: return SUCCESS;
+          case 2: return CLIENT_ENCODING_ERROR;
+          case 3: return CLIENT_REQUEST_ERROR;
+          case 4: return SERVER_ERROR;
+          default: return null;
+        }
+      }
+
+      public static com.google.protobuf.Internal.EnumLiteMap<Status>
+          internalGetValueMap() {
+        return internalValueMap;
+      }
+      private static com.google.protobuf.Internal.EnumLiteMap<Status>
+          internalValueMap =
+            new com.google.protobuf.Internal.EnumLiteMap<Status>() {
+              public Status findValueByNumber(int number) {
+                return Status.valueOf(number);
+              }
+            };
+
+      public final com.google.protobuf.Descriptors.EnumValueDescriptor
+          getValueDescriptor() {
+        return getDescriptor().getValues().get(index);
+      }
+      public final com.google.protobuf.Descriptors.EnumDescriptor
+          getDescriptorForType() {
+        return getDescriptor();
+      }
+      public static final com.google.protobuf.Descriptors.EnumDescriptor
+          getDescriptor() {
+        return com.hello.haneda.api.Async.Ack.getDescriptor().getEnumTypes().get(0);
+      }
+
+      private static final Status[] VALUES = values();
+
+      public static Status valueOf(
+          com.google.protobuf.Descriptors.EnumValueDescriptor desc) {
+        if (desc.getType() != getDescriptor()) {
+          throw new java.lang.IllegalArgumentException(
+            "EnumValueDescriptor is not for this type.");
+        }
+        return VALUES[desc.getIndex()];
+      }
+
+      private final int index;
+      private final int value;
+
+      private Status(int index, int value) {
+        this.index = index;
+        this.value = value;
+      }
+
+      // @@protoc_insertion_point(enum_scope:Ack.Status)
+    }
+
+    private int bitField0_;
+    public static final int MESSAGE_ID_FIELD_NUMBER = 1;
+    private long messageId_;
+    /**
+     * <code>optional uint64 message_id = 1;</code>
+     */
+    public boolean hasMessageId() {
+      return ((bitField0_ & 0x00000001) == 0x00000001);
+    }
+    /**
+     * <code>optional uint64 message_id = 1;</code>
+     */
+    public long getMessageId() {
       return messageId_;
     }
+
+    public static final int STATUS_FIELD_NUMBER = 2;
+    private com.hello.haneda.api.Async.Ack.Status status_;
     /**
-     * <code>repeated uint64 message_id = 1;</code>
+     * <code>optional .Ack.Status status = 2;</code>
      */
-    public int getMessageIdCount() {
-      return messageId_.size();
+    public boolean hasStatus() {
+      return ((bitField0_ & 0x00000002) == 0x00000002);
     }
     /**
-     * <code>repeated uint64 message_id = 1;</code>
+     * <code>optional .Ack.Status status = 2;</code>
      */
-    public long getMessageId(int index) {
-      return messageId_.get(index);
+    public com.hello.haneda.api.Async.Ack.Status getStatus() {
+      return status_;
     }
 
     private void initFields() {
-      messageId_ = java.util.Collections.emptyList();
+      messageId_ = 0L;
+      status_ = com.hello.haneda.api.Async.Ack.Status.SUCCESS;
     }
     private byte memoizedIsInitialized = -1;
     public final boolean isInitialized() {
@@ -178,8 +317,11 @@ public final class Async {
     public void writeTo(com.google.protobuf.CodedOutputStream output)
                         throws java.io.IOException {
       getSerializedSize();
-      for (int i = 0; i < messageId_.size(); i++) {
-        output.writeUInt64(1, messageId_.get(i));
+      if (((bitField0_ & 0x00000001) == 0x00000001)) {
+        output.writeUInt64(1, messageId_);
+      }
+      if (((bitField0_ & 0x00000002) == 0x00000002)) {
+        output.writeEnum(2, status_.getNumber());
       }
       getUnknownFields().writeTo(output);
     }
@@ -190,14 +332,13 @@ public final class Async {
       if (size != -1) return size;
 
       size = 0;
-      {
-        int dataSize = 0;
-        for (int i = 0; i < messageId_.size(); i++) {
-          dataSize += com.google.protobuf.CodedOutputStream
-            .computeUInt64SizeNoTag(messageId_.get(i));
-        }
-        size += dataSize;
-        size += 1 * getMessageIdList().size();
+      if (((bitField0_ & 0x00000001) == 0x00000001)) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeUInt64Size(1, messageId_);
+      }
+      if (((bitField0_ & 0x00000002) == 0x00000002)) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeEnumSize(2, status_.getNumber());
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -316,8 +457,10 @@ public final class Async {
 
       public Builder clear() {
         super.clear();
-        messageId_ = java.util.Collections.emptyList();
+        messageId_ = 0L;
         bitField0_ = (bitField0_ & ~0x00000001);
+        status_ = com.hello.haneda.api.Async.Ack.Status.SUCCESS;
+        bitField0_ = (bitField0_ & ~0x00000002);
         return this;
       }
 
@@ -345,11 +488,16 @@ public final class Async {
       public com.hello.haneda.api.Async.Ack buildPartial() {
         com.hello.haneda.api.Async.Ack result = new com.hello.haneda.api.Async.Ack(this);
         int from_bitField0_ = bitField0_;
-        if (((bitField0_ & 0x00000001) == 0x00000001)) {
-          messageId_ = java.util.Collections.unmodifiableList(messageId_);
-          bitField0_ = (bitField0_ & ~0x00000001);
+        int to_bitField0_ = 0;
+        if (((from_bitField0_ & 0x00000001) == 0x00000001)) {
+          to_bitField0_ |= 0x00000001;
         }
         result.messageId_ = messageId_;
+        if (((from_bitField0_ & 0x00000002) == 0x00000002)) {
+          to_bitField0_ |= 0x00000002;
+        }
+        result.status_ = status_;
+        result.bitField0_ = to_bitField0_;
         onBuilt();
         return result;
       }
@@ -365,15 +513,11 @@ public final class Async {
 
       public Builder mergeFrom(com.hello.haneda.api.Async.Ack other) {
         if (other == com.hello.haneda.api.Async.Ack.getDefaultInstance()) return this;
-        if (!other.messageId_.isEmpty()) {
-          if (messageId_.isEmpty()) {
-            messageId_ = other.messageId_;
-            bitField0_ = (bitField0_ & ~0x00000001);
-          } else {
-            ensureMessageIdIsMutable();
-            messageId_.addAll(other.messageId_);
-          }
-          onChanged();
+        if (other.hasMessageId()) {
+          setMessageId(other.getMessageId());
+        }
+        if (other.hasStatus()) {
+          setStatus(other.getStatus());
         }
         this.mergeUnknownFields(other.getUnknownFields());
         return this;
@@ -402,68 +546,69 @@ public final class Async {
       }
       private int bitField0_;
 
-      private java.util.List<java.lang.Long> messageId_ = java.util.Collections.emptyList();
-      private void ensureMessageIdIsMutable() {
-        if (!((bitField0_ & 0x00000001) == 0x00000001)) {
-          messageId_ = new java.util.ArrayList<java.lang.Long>(messageId_);
-          bitField0_ |= 0x00000001;
-         }
+      private long messageId_ ;
+      /**
+       * <code>optional uint64 message_id = 1;</code>
+       */
+      public boolean hasMessageId() {
+        return ((bitField0_ & 0x00000001) == 0x00000001);
       }
       /**
-       * <code>repeated uint64 message_id = 1;</code>
+       * <code>optional uint64 message_id = 1;</code>
        */
-      public java.util.List<java.lang.Long>
-          getMessageIdList() {
-        return java.util.Collections.unmodifiableList(messageId_);
+      public long getMessageId() {
+        return messageId_;
       }
       /**
-       * <code>repeated uint64 message_id = 1;</code>
+       * <code>optional uint64 message_id = 1;</code>
        */
-      public int getMessageIdCount() {
-        return messageId_.size();
-      }
-      /**
-       * <code>repeated uint64 message_id = 1;</code>
-       */
-      public long getMessageId(int index) {
-        return messageId_.get(index);
-      }
-      /**
-       * <code>repeated uint64 message_id = 1;</code>
-       */
-      public Builder setMessageId(
-          int index, long value) {
-        ensureMessageIdIsMutable();
-        messageId_.set(index, value);
+      public Builder setMessageId(long value) {
+        bitField0_ |= 0x00000001;
+        messageId_ = value;
         onChanged();
         return this;
       }
       /**
-       * <code>repeated uint64 message_id = 1;</code>
-       */
-      public Builder addMessageId(long value) {
-        ensureMessageIdIsMutable();
-        messageId_.add(value);
-        onChanged();
-        return this;
-      }
-      /**
-       * <code>repeated uint64 message_id = 1;</code>
-       */
-      public Builder addAllMessageId(
-          java.lang.Iterable<? extends java.lang.Long> values) {
-        ensureMessageIdIsMutable();
-        com.google.protobuf.AbstractMessageLite.Builder.addAll(
-            values, messageId_);
-        onChanged();
-        return this;
-      }
-      /**
-       * <code>repeated uint64 message_id = 1;</code>
+       * <code>optional uint64 message_id = 1;</code>
        */
       public Builder clearMessageId() {
-        messageId_ = java.util.Collections.emptyList();
         bitField0_ = (bitField0_ & ~0x00000001);
+        messageId_ = 0L;
+        onChanged();
+        return this;
+      }
+
+      private com.hello.haneda.api.Async.Ack.Status status_ = com.hello.haneda.api.Async.Ack.Status.SUCCESS;
+      /**
+       * <code>optional .Ack.Status status = 2;</code>
+       */
+      public boolean hasStatus() {
+        return ((bitField0_ & 0x00000002) == 0x00000002);
+      }
+      /**
+       * <code>optional .Ack.Status status = 2;</code>
+       */
+      public com.hello.haneda.api.Async.Ack.Status getStatus() {
+        return status_;
+      }
+      /**
+       * <code>optional .Ack.Status status = 2;</code>
+       */
+      public Builder setStatus(com.hello.haneda.api.Async.Ack.Status value) {
+        if (value == null) {
+          throw new NullPointerException();
+        }
+        bitField0_ |= 0x00000002;
+        status_ = value;
+        onChanged();
+        return this;
+      }
+      /**
+       * <code>optional .Ack.Status status = 2;</code>
+       */
+      public Builder clearStatus() {
+        bitField0_ = (bitField0_ & ~0x00000002);
+        status_ = com.hello.haneda.api.Async.Ack.Status.SUCCESS;
         onChanged();
         return this;
       }
@@ -493,8 +638,11 @@ public final class Async {
       descriptor;
   static {
     java.lang.String[] descriptorData = {
-      "\n\013async.proto\"\031\n\003Ack\022\022\n\nmessage_id\030\001 \003(\004" +
-      "B\026\n\024com.hello.haneda.api"
+      "\n\013async.proto\"\224\001\n\003Ack\022\022\n\nmessage_id\030\001 \001(" +
+      "\004\022\033\n\006status\030\002 \001(\0162\013.Ack.Status\"\\\n\006Status" +
+      "\022\013\n\007SUCCESS\020\001\022\031\n\025CLIENT_ENCODING_ERROR\020\002" +
+      "\022\030\n\024CLIENT_REQUEST_ERROR\020\003\022\020\n\014SERVER_ERR" +
+      "OR\020\004B\026\n\024com.hello.haneda.api"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
         new com.google.protobuf.Descriptors.FileDescriptor.    InternalDescriptorAssigner() {
@@ -513,7 +661,7 @@ public final class Async {
     internal_static_Ack_fieldAccessorTable = new
       com.google.protobuf.GeneratedMessage.FieldAccessorTable(
         internal_static_Ack_descriptor,
-        new java.lang.String[] { "MessageId", });
+        new java.lang.String[] { "MessageId", "Status", });
   }
 
   // @@protoc_insertion_point(outer_class_scope)

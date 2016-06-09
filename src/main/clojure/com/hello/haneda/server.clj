@@ -10,8 +10,11 @@
       Streaming$Preamble
       Streaming$Preamble$auth_type
       Streaming$Preamble$pb_type
-      Async$Ack]
-    [java.nio ByteBuffer]))
+      Async$Ack
+      Async$Ack$Status]
+    [java.nio ByteBuffer]
+    [javax.crypto Mac]
+    [javax.crypto.spec SecretKeySpec]))
 
 (defn- request->sense-id
   [request]
@@ -24,7 +27,7 @@
    :body body})
 
 (def length-size-bytes 4)
-(def hmac-size-bytes 40) ; TODO we'll know this based on the preamble
+(def hmac-size-bytes 20) ; TODO we'll know this based on the preamble
 (def reserved-size-bytes 0)
 (def max-chunk-size 2048)
 
@@ -36,10 +39,16 @@
   ^Streaming$Preamble [^bytes preamble-bytes]
   (Streaming$Preamble/parseFrom preamble-bytes))
 
-(defn hmac
-  [key data]
-  ;; TODO
-  (byte-array (range hmac-size-bytes)))
+;; TODO hmac should be of entire stream up to this point (all chunks)
+(defn hmac-sha1
+  [^bytes key ^bytes data]
+  (let [algorithm "HmacSHA1"
+        signing-key (SecretKeySpec. key algorithm)
+        mac (Mac/getInstance algorithm)]
+    (.init mac signing-key)
+    (.doFinal mac data)))
+
+;; TODO implement rolling HMAC
 
 (defn aslice
   ^bytes [^bytes array from to]
@@ -50,10 +59,9 @@
   (let [payload-length (- (alength chunk) hmac-size-bytes)
         payload-chunk (aslice chunk 0 payload-length)
         hmac-chunk (aslice chunk payload-length (alength chunk))
-        computed-hmac (hmac key payload-chunk)]
-    ;; TODO return error ack
+        computed-hmac (hmac-sha1 key payload-chunk)]
     (when-not (java.util.Arrays/equals hmac-chunk computed-hmac)
-      )
+      (throw (ex-info "bad-hmac" {::error ::bad-hmac})))
     payload-chunk))
 
 (defn decode-length
@@ -87,12 +95,18 @@
                         byte-array
                         decode-length)
         chunks (partition-all max-chunk-size message)
-        ;; TODO first chunk may use different hash function from remaining chunks
-        payload-bytes (->> (rest chunks)
-                        (cons (drop (+ length-size-bytes preamble-length length-size-bytes) (first chunks)))
-                        (mapcat (comp (partial parse-chunk key) byte-array)))]
+        payload-bytes (try
+                        (->> (rest chunks)
+                          (cons (drop (+ length-size-bytes preamble-length length-size-bytes) (first chunks)))
+                          (mapcat (comp (partial parse-chunk key) byte-array))
+                          ;; Doall to force the exception to happen here as opposed to later (laziness...)
+                          byte-array)
+                        (catch clojure.lang.ExceptionInfo ei
+                          nil))]
     {:preamble preamble
-     :payload-bytes payload-bytes}))
+     :payload-bytes payload-bytes
+     :preamble-length preamble-length
+     :payload-length payload-length}))
 
 (defn padded-length
   ^bytes [^bytes protobuf]
@@ -103,27 +117,63 @@
 
 (defn encode-bytes
   ^bytes [^bytes preamble ^bytes payload ^bytes hmac]
-  ;; TODO reserved?
   (byte-array
     (concat (padded-length preamble) preamble
             (padded-length payload) payload
             hmac)))
 
 (defn encode-message
-  ^bytes [^Streaming$Preamble$pb_type pb-type ^bytes payload ^bytes hmac]
-  (let [preamble (.. (Streaming$Preamble/newBuilder)
-                    (setType pb-type)
-                    (setAuth Streaming$Preamble$auth_type/HMAC_SHA1)
-                    build
-                    toByteArray)]
+  ^bytes [^bytes key
+          ^Streaming$Preamble$pb_type pb-type
+          ^bytes payload & [id]]
+  (let [preamble (cond-> (Streaming$Preamble/newBuilder)
+                    :always (.setType pb-type)
+                    :always (.setAuth Streaming$Preamble$auth_type/HMAC_SHA1)
+                    id (.setId id)
+                    :always .build
+                    :always .toByteArray)
+        hmac (hmac-sha1 key payload)]
+    ;; TODO this is single chunk only right now
     (encode-bytes preamble payload hmac)))
+
+(def pb-type
+  {:ack Streaming$Preamble$pb_type/ACK
+   :batched-periodic-data Streaming$Preamble$pb_type/BATCHED_PERIODIC_DATA
+   :sense-log Streaming$Preamble$pb_type/SENSE_LOG
+   :sync-response Streaming$Preamble$pb_type/SYNC_RESPONSE
+   :matrix-client-message Streaming$Preamble$pb_type/MATRIX_CLIENT_MESSAGE
+   :messeji Streaming$Preamble$pb_type/MESSEJI})
+
+(def ack-status
+  {:success Async$Ack$Status/SUCCESS
+   :client-encoding-error Async$Ack$Status/CLIENT_ENCODING_ERROR
+   :client-request-error Async$Ack$Status/CLIENT_REQUEST_ERROR
+   :server-error Async$Ack$Status/SERVER_ERROR})
+
+(defn ack
+  [message-id ^Async$Ack$Status status]
+  (.. (Async$Ack/newBuilder)
+    (setMessageId message-id)
+    (setStatus status)
+    build))
 
 (defn dispatch-message-async
   [sense-id key message]
+  ;; Just reply with an ack for now after timeout
+  ;; TODO return error if message decoding fails
   (let [{:keys [preamble payload-bytes]} (decode-message key message)]
+    ;; TODO handle error parsing payload and preamble
     ;; TODO dispatch based on preamble
     ;; Send to relevant service, reply with ack (with ID) and response
-    ))
+    ;; TODO this should actually make a post request.
+    ;; The timeout is just to fake an HTTP request right now
+    (d/let-flow [response (d/timeout! (d/deferred) 50 nil)
+                 ack-response (ack (.getId preamble) (:success ack-status))
+                 payload-bytes (.toByteArray ack-response)]
+      (encode-message
+        key
+        Streaming$Preamble$pb_type/ACK
+        payload-bytes))))
 
 (defn dispatch-handler
   [request]
