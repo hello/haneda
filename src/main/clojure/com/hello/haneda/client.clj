@@ -1,24 +1,5 @@
 (ns com.hello.haneda.client
-  "Haneda websocket client.
-
-  Example usage:
-
-  (require '[com.hello.haneda.client :as client])
-  (def sense-id \"my-sense\")
-  (def key (.getBytes sense-id))  ; Haneda server fakes id using the sense id
-  (def url \"ws://localhost:11000/dispatch\")
-  (def connection (client/connect sense-id url))
-
-  ;; Make a payload of bytes 0-99 (in reality will be serialized protobuf)
-  (def payload (byte-array (range 100)))
-
-  ;; Wait for a message to be sent to server (leave off the `@` for fully async)
-  @(client/send-message connection key payload)
-
-  ;; Get the next decoded message from the server
-  @(client/receive-message connection key)
-
-  (.close connection)"
+  "Haneda websocket client."
   (:require
     [aleph.http :as http]
     [com.hello.haneda

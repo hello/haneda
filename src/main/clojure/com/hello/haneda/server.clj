@@ -1,5 +1,6 @@
 (ns com.hello.haneda.server
   "Haneda websocket server."
+  (:gen-class)
   (:require
     [aleph.http :as http]
     [com.hello.haneda
@@ -33,6 +34,7 @@
   ;; Just reply with an ack for now after timeout
   ;; TODO return error if message decoding fails
   (let [{:keys [preamble payload-bytes]} (mf/decode-message key message)]
+    (prn preamble payload-bytes)
     ;; TODO handle error parsing payload and preamble
     ;; TODO dispatch based on preamble
     ;; Send to relevant service, reply with ack (with ID) and response

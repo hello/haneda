@@ -7,6 +7,8 @@
                  [aleph "0.4.1-beta2"]
                  [com.google.protobuf/protobuf-java "2.6.1"]
                  [compojure "1.4.0"]]
+  :main com.hello.haneda.server
+  :aot [com.hello.haneda.server]
   :source-paths ["src" "src/main/clojure"]
   ;; Java source is stored separately.
   :java-source-paths ["src/main/java"])
