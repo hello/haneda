@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"flag"
+	"fmt"
 	proto "github.com/golang/protobuf/proto"
 	"log"
 	"net/http"
@@ -26,32 +27,42 @@ import (
 	"github.com/hello/haneda/haneda"
 )
 
-var addr = flag.String("addr", "ws-dev.hello.is:443", "http service address")
+// var addr = flag.String("addr", "ws-dev.hello.is:443", "http service address")
+var addr = flag.String("addr", "localhost:8082", "http service address")
 
 func basicAuth(username, password string) string {
 	auth := username + ":" + password
 	return base64.StdEncoding.EncodeToString([]byte(auth))
 }
 
-func main() {
-	flag.Parse()
-	log.SetFlags(0)
+type HelloWsClient struct {
+	interrupt chan os.Signal
+	name      string
+}
 
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
+func NewHelloWsClient(name string, interrupt chan os.Signal) *HelloWsClient {
+	return &HelloWsClient{
+		name:      name,
+		interrupt: interrupt,
+	}
+}
+
+func (h *HelloWsClient) Start(addr string, sleep int64, done chan struct{}) {
+
+	signal.Notify(h.interrupt, os.Interrupt)
 
 	headers := http.Header{}
-	headers.Add("Authorization", "Basic "+basicAuth("tim", "foo"))
-	u := url.URL{Scheme: "wss", Host: *addr, Path: "/echo"}
+	headers.Add("Authorization", "Basic "+basicAuth(h.name, "foo"))
+	// u := url.URL{Scheme: "wss", Host: *addr, Path: "/echo"}
+	u := url.URL{Scheme: "ws", Host: addr, Path: "/echo"}
 	log.Printf("connecting to %s", u.String())
 
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), headers)
 	if err != nil {
-		log.Fatal("dial:", err)
+		log.Println("dial:", err)
+		return
 	}
 	defer c.Close()
-
-	done := make(chan struct{})
 
 	go func() {
 		defer c.Close()
@@ -64,13 +75,14 @@ func main() {
 			}
 			m := &haneda.Preamble{}
 			proto.Unmarshal(message, m)
-			log.Printf("recv: %d\n", m.GetId())
+			log.Printf("%s: %d\n", h.name, m.GetId())
+
 		}
 	}()
 
-	ticker := time.NewTicker(20 * time.Millisecond)
+	ticker := time.NewTicker(time.Duration(sleep) * time.Millisecond)
 	defer ticker.Stop()
-
+	i := 0
 	for {
 		select {
 		case <-ticker.C:
@@ -102,12 +114,14 @@ func main() {
 			err := c.WriteMessage(websocket.BinaryMessage, env.Bytes())
 			if err != nil {
 				log.Println("write:", err)
-				return
+				// return
 			}
-		case <-interrupt:
+			i++
+		case <-h.interrupt:
 			log.Println("interrupt")
 			// To cleanly close a connection, a client should send a close
 			// frame and wait for the server to close the connection.
+			fmt.Println("Sent", c.LocalAddr(), i)
 			err := c.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 			if err != nil {
 				log.Println("write close:", err)
@@ -115,10 +129,29 @@ func main() {
 			}
 			select {
 			case <-done:
+				fmt.Println("Sent", c.LocalAddr(), i)
 			case <-time.After(time.Second):
+
 			}
+
 			c.Close()
 			return
 		}
 	}
+}
+func main() {
+	flag.Parse()
+	log.SetFlags(0)
+
+	numWorkers := 100
+	interrupt := make(chan os.Signal, 1)
+	done := make(chan struct{}, 0)
+	for i := 0; i < numWorkers; i++ {
+		sleep := int64(20000) + int64(i)
+		name := fmt.Sprintf("Sense%d", i)
+		client := NewHelloWsClient(name, interrupt)
+		go client.Start(*addr, sleep, done)
+	}
+	<-interrupt
+	log.Println("Done exiting")
 }

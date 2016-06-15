@@ -1,4 +1,4 @@
-package main
+package haneda
 
 import (
 	"bytes"
@@ -6,17 +6,15 @@ import (
 	"crypto/sha1"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
-	// "github.com/hello/haneda/api"
+	"github.com/hello/haneda/api"
 	"github.com/hello/haneda/haneda"
 	"net/http"
 	"strings"
 )
-
-type WSHandler struct {
-}
 
 func CheckMAC(message, messageMAC, key []byte) bool {
 	mac := hmac.New(sha1.New, key)
@@ -25,51 +23,34 @@ func CheckMAC(message, messageMAC, key []byte) bool {
 	return hmac.Equal(messageMAC, expectedMAC)
 }
 
-func (h *WSHandler) Get(username, password string) bool {
-	if username == "tim" && password == "foo" {
+func checkCreds(username, password string) bool {
+	if password == "foo" {
 		return true
 	}
 	return false
 }
 
-func (h WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+type authenticateFunc func(username, password string) bool
 
-	fmt.Printf("origin: %s\n", r.Header.Get("Origin"))
-
-	fmt.Printf("%v\n", r.Header)
-	var sense string
+func extractBasicAuth(r *http.Request, f authenticateFunc) (string, error) {
 	if len(r.Header["Authorization"]) > 0 {
 
 		auth := strings.SplitN(r.Header["Authorization"][0], " ", 2)
 
 		if len(auth) != 2 || auth[0] != "Basic" {
-			http.Error(w, "bad syntax", http.StatusBadRequest)
-			return
+			return "", errors.New("Bad headers")
 		}
 
 		payload, _ := base64.StdEncoding.DecodeString(auth[1])
 		pair := strings.SplitN(string(payload), ":", 2)
 
-		if len(pair) != 2 || !h.Get(pair[0], pair[1]) {
-			fmt.Println("Bad auth")
-			http.Error(w, "authorization failed", http.StatusUnauthorized)
-			return
+		if len(pair) != 2 || !f(pair[0], pair[1]) {
+
+			return "", errors.New("Bad headers")
 		}
-		sense = pair[0]
-	} else {
-		fmt.Println(r.Header)
-		fmt.Println("yo")
-		http.Error(w, http.StatusText(401), 401)
-		return
+		return pair[0], nil
 	}
-
-	fmt.Printf("Method: %s\n", r.Method)
-	conn, err := websocket.Upgrade(w, r, w.Header(), 1024, 1024)
-	if err != nil {
-		http.Error(w, "Could not open websocket connection", http.StatusBadRequest)
-	}
-
-	go echo(conn, sense)
+	return "", errors.New("not found")
 }
 
 func basicAuth(auth string) (string, string) {
@@ -78,8 +59,39 @@ func basicAuth(auth string) (string, string) {
 	return pair[0], pair[1]
 }
 
-func echo(conn *websocket.Conn, senseId string) {
+func parse(content []byte) (*api.MessageParts, error) {
+	bbuf := bytes.NewReader(content)
+	var llen uint64
+	err := binary.Read(bbuf, binary.LittleEndian, &llen)
+	if err != nil {
+		fmt.Println(err)
+		return nil, err
+	}
+
+	payload := make([]byte, llen)
+	_, err = bbuf.Read(payload)
+	sig := make([]byte, 20)
+	_, err = bbuf.Read(sig)
+
+	m := &api.MessageParts{
+		Header: make([]byte, 0),
+		Body:   payload,
+		Sig:    sig,
+	}
+
+	return m, nil
+}
+
+func serialize(id uint64) []byte {
+	pb := &haneda.Preamble{}
+	pb.Id = &id
+	m, _ := proto.Marshal(pb)
+	return m
+}
+
+func echo(conn *websocket.Conn, senseId string, stats chan api.Stat) {
 	i := 0
+	defer conn.Close()
 	for {
 
 		_, content, err := conn.ReadMessage()
@@ -88,80 +100,53 @@ func echo(conn *websocket.Conn, senseId string) {
 			break
 		}
 
-		bbuf := bytes.NewReader(content)
-		var llen uint64
-		err = binary.Read(bbuf, binary.LittleEndian, &llen)
+		mp, err := parse(content)
 		if err != nil {
-			fmt.Println(err)
 			break
 		}
 
-		payload := make([]byte, llen)
-
-		_, err = bbuf.Read(payload)
-
-		sig := make([]byte, 20)
-		_, err = bbuf.Read(sig)
-
-		match := CheckMAC(payload, sig, []byte("abc"))
+		match := CheckMAC(mp.Body, mp.Sig, []byte("abc"))
 		if !match {
 			fmt.Println("don't match!!!")
-			fmt.Printf("%v\n", payload)
+			fmt.Printf("%v\n", mp.Body)
 			fmt.Println("len(content)", len(content))
-
-			fmt.Println("llen", llen)
-			fmt.Printf("%x\n", sig)
+			fmt.Printf("%x\n", mp.Sig)
 		}
 
 		pb := &haneda.Preamble{}
-		protoErr := proto.Unmarshal(payload, pb)
+		protoErr := proto.Unmarshal(mp.Body, pb)
 		if protoErr != nil {
 			fmt.Println(protoErr)
 			break
 		}
 
-		fmt.Printf("Got message: %s %d\n", pb.GetType().String(), pb.GetId())
+		// fmt.Printf("Got message: %s %d\n", pb.GetType().String(), pb.GetId())
 		newId := uint64(88888)
-		pb.Id = &newId
-		m, _ := proto.Marshal(pb)
+		m := serialize(newId)
 		if err = conn.WriteMessage(websocket.BinaryMessage, m); err != nil {
 			fmt.Println(err)
 			break
 		}
 		i++
 	}
-	fmt.Println(i)
-	conn.Close()
+	s := api.Stat{
+		Source: conn.RemoteAddr().String(),
+		Count:  i,
+	}
+	fmt.Println(s)
+	stats <- s
 }
 
-// func wsHandler(w http.ResponseWriter, r *http.Request) {
-// 	fmt.Printf("%v\n", r)
-// 	// if r.Header.Get("Origin") != "http://"+r.Host {
-// 	// 	fmt.Println("Origin not allowed")
-// 	// 	http.Error(w, "Origin not allowed", 403)
-// 	// 	return
-// 	// }
-// 	fmt.Printf("Method: %s\n", r.Method)
-// 	conn, err := websocket.Upgrade(w, r, w.Header(), 1024, 1024)
-// 	if err != nil {
-// 		http.Error(w, "Could not open websocket connection", http.StatusBadRequest)
-// 	}
-
-// 	go echo(conn)
-// }
-
-func healthHandler(w http.ResponseWriter, r *http.Request) {
+func HealthHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Println("/health")
 	fmt.Fprintf(w, "%s\n", "ok")
 }
 
-func main() {
-
-	wsHandler := WSHandler{}
-	http.HandleFunc("/health", healthHandler)
-	http.Handle("/echo", wsHandler)
-	err := http.ListenAndServe(":8082", nil)
-	if err != nil {
-		panic("ListenAndServe: " + err.Error())
+func DisplayStats(s chan api.Stat) {
+	running := 0
+	for m := range s {
+		running += m.Count
+		fmt.Printf("stats: %s = %d\n", m.Source, m.Count)
+		fmt.Printf("\t total so far: %d\n", running)
 	}
 }
