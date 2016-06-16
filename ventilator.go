@@ -52,16 +52,22 @@ func (v *Ventilator) Listen() {
 		psc := redis.PubSubConn{c}
 
 		// Set up subscriptions
-		psc.Subscribe("example")
+		psc.Subscribe(v.topic)
 
 		// While not a permanent error on the connection.
 		for c.Err() == nil {
 			switch val := psc.Receive().(type) {
 			case redis.Message:
 				jm := &api.JsonMessage{}
-				json.Unmarshal(val.Data, jm)
+				jsonErr := json.Unmarshal(val.Data, jm)
+				if jsonErr != nil {
+					fmt.Println(jsonErr, string(val.Data))
+					break
+				}
+
 				fmt.Printf("%s: message: %s\n", val.Channel, val.Data)
 				fmt.Printf("name: %s, id:%d\n", jm.Name, jm.Id)
+
 				v.Lock()
 				conn := v.pairs[jm.Name]
 				v.Unlock()

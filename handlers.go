@@ -21,9 +21,9 @@ func NewWsHandler(stats chan api.Stat, vent *Ventilator) *WSHandler {
 
 func (h WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	fmt.Printf("origin: %s\n", r.Header.Get("Origin"))
+	// fmt.Printf("origin: %s\n", r.Header.Get("Origin"))
 
-	fmt.Printf("%v\n", r.Header)
+	// fmt.Printf("%v\n", r.Header)
 	sense, err := extractBasicAuth(r, checkCreds)
 
 	if err != nil {
@@ -31,8 +31,8 @@ func (h WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "authorization failed", http.StatusUnauthorized)
 		return
 	}
-
-	fmt.Printf("Method: %s\n", r.Method)
+	fmt.Println(sense)
+	// fmt.Printf("Method: %s\n", r.Method)
 	conn, err := websocket.Upgrade(w, r, w.Header(), 1024, 1024)
 	if err != nil {
 		http.Error(w, "Could not open websocket connection", http.StatusBadRequest)

@@ -1,11 +1,42 @@
 package main
 
 import (
+	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"github.com/hello/haneda"
 	"github.com/hello/haneda/api"
 	"net/http"
 )
+
+func proxy(w http.ResponseWriter, r *http.Request) {
+
+}
+
+type PublishHanlder struct {
+	pool  *redis.Pool
+	topic string
+}
+
+func (h *PublishHanlder) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	conn := h.pool.Get()
+	msg := `{"name": "Sense1", "id": 1234567890}`
+	conn.Do("PUBLISH", h.topic, msg)
+	fmt.Fprintf(w, "%s", msg)
+}
+
+func webserver(topic string, pool *redis.Pool) {
+
+	ph := &PublishHanlder{
+		topic: topic,
+		pool:  pool,
+	}
+
+	http.Handle("/publish", ph)
+	err := http.ListenAndServe(":8083", nil)
+	if err != nil {
+		panic("ListenAndServe: " + err.Error())
+	}
+}
 
 func main() {
 	stats := make(chan api.Stat, 0)
@@ -21,11 +52,14 @@ func main() {
 		return c, err
 	}, 10)
 
+	topic := "example"
 	defer redisPool.Close()
-	vent := haneda.NewVentilator("example", redisPool)
+	vent := haneda.NewVentilator(topic, redisPool)
 
-	go vent.Publish()
+	// go vent.Publish() // only required for testing
 	go vent.Listen()
+
+	go webserver(topic, redisPool)
 	wsHandler := haneda.NewWsHandler(stats, vent)
 	http.HandleFunc("/health", haneda.HealthHandler)
 	http.Handle("/echo", wsHandler)
