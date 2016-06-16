@@ -30,9 +30,7 @@ func checkCreds(username, password string) bool {
 	return false
 }
 
-type authenticateFunc func(username, password string) bool
-
-func extractBasicAuth(r *http.Request, f authenticateFunc) (string, error) {
+func extractBasicAuth(r *http.Request, f api.AuthenticateFunc) (string, error) {
 	if len(r.Header["Authorization"]) > 0 {
 
 		auth := strings.SplitN(r.Header["Authorization"][0], " ", 2)

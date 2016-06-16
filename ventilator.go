@@ -10,6 +10,7 @@ import (
 	"time"
 )
 
+// Ventilator dispatches out of band messages to each connected sense
 type Ventilator struct {
 	pairs map[string]*websocket.Conn
 	sync.Mutex
@@ -17,6 +18,7 @@ type Ventilator struct {
 	pool  *redis.Pool
 }
 
+// NewVentilator creates a new Ventilator
 func NewVentilator(topic string, pool *redis.Pool) *Ventilator {
 	return &Ventilator{
 		topic: topic,
@@ -25,6 +27,7 @@ func NewVentilator(topic string, pool *redis.Pool) *Ventilator {
 	}
 }
 
+// register a sense with the given ws connection
 func (v *Ventilator) register(senseId string, conn *websocket.Conn) {
 	v.Lock()
 	defer v.Unlock()
@@ -32,6 +35,7 @@ func (v *Ventilator) register(senseId string, conn *websocket.Conn) {
 	fmt.Printf("Registered: %s\n", senseId)
 }
 
+// deregister a sense
 func (v *Ventilator) deregister(senseId string) {
 	v.Lock()
 	defer v.Unlock()
@@ -39,6 +43,7 @@ func (v *Ventilator) deregister(senseId string) {
 	fmt.Printf("Deregistered: %s\n", senseId)
 }
 
+// Listen blocks and wait for messages to be published on the redis channel
 func (v *Ventilator) Listen() {
 
 	for {
@@ -75,7 +80,7 @@ func (v *Ventilator) Listen() {
 	}
 }
 
-// simulate messeji requests
+// Publish simulates messeji requests
 func (v *Ventilator) Publish() {
 	t := time.NewTicker(1 * time.Second)
 	c := v.pool.Get()
