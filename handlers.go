@@ -37,7 +37,14 @@ func (h WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Could not open websocket connection", http.StatusBadRequest)
 	}
+	senseConn := &SenseConn{
+		SenseId:               sense,
+		Conn:                  conn,
+		TopFirmwareVersion:    "top",         // get from headers
+		MiddleFirmwareVersion: "middle",      // get from headers
+		PrivKey:               []byte("abc"), // get from keystore
+	}
 
-	h.ventilator.register(sense, conn)
-	go echo(conn, sense, h.stats)
+	h.ventilator.Add(senseConn)
+	go spin(senseConn)
 }

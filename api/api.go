@@ -1,5 +1,10 @@
 package api
 
+import (
+	"fmt"
+	"github.com/hello/haneda/haneda"
+)
+
 type Msg struct {
 	Name string `json:"name"`
 }
@@ -12,7 +17,7 @@ type JsonMessage struct {
 
 // MessageParts
 type MessageParts struct {
-	Header []byte
+	Header *haneda.Preamble
 	Body   []byte
 	Sig    []byte
 }
@@ -21,6 +26,10 @@ type MessageParts struct {
 type Stat struct {
 	Source string
 	Count  int
+}
+
+func (s Stat) String() string {
+	return fmt.Sprintf("source:%s, count:%d\n", s.Source, s.Count)
 }
 
 // AuthenticateFunc validates username password against db

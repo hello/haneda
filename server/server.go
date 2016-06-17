@@ -54,7 +54,8 @@ func main() {
 
 	topic := "example"
 	defer redisPool.Close()
-	vent := haneda.NewVentilator(topic, redisPool)
+	done := make(chan bool, 0)
+	vent := haneda.NewVentilator(done, topic, redisPool)
 
 	// go vent.Publish() // only required for testing
 	go vent.Listen()

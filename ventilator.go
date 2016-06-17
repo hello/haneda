@@ -1,46 +1,66 @@
 package haneda
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/garyburd/redigo/redis"
-	"github.com/gorilla/websocket"
 	"github.com/hello/haneda/api"
-	"sync"
-	"time"
+	"log"
 )
 
-// Ventilator dispatches out of band messages to each connected sense
 type Ventilator struct {
-	pairs map[string]*websocket.Conn
-	sync.Mutex
-	topic string
+	store map[string]*SenseConn
+	in    chan *SenseConn
+	out   chan string
+	msg   chan *AckMessageWrapper
+	raw   chan *api.MessageParts
+	done  chan bool
 	pool  *redis.Pool
+	topic string
 }
 
-// NewVentilator creates a new Ventilator
-func NewVentilator(topic string, pool *redis.Pool) *Ventilator {
-	return &Ventilator{
-		topic: topic,
-		pairs: make(map[string]*websocket.Conn),
-		pool:  pool,
+func (v *Ventilator) Receive(parsed *api.MessageParts) {
+	v.raw <- parsed
+}
+
+func (v *Ventilator) Add(senseConn *SenseConn) {
+	v.in <- senseConn
+}
+
+func (v *Ventilator) Remove(senseId string) {
+	v.out <- senseId
+}
+
+func (v *Ventilator) push(ack *AckMessageWrapper) {
+	v.msg <- ack
+}
+
+func (v *Ventilator) Run() {
+outer:
+	for {
+		select {
+		case m := <-v.in:
+			v.store[m.SenseId] = m
+		case m := <-v.out:
+			delete(v.store, m)
+		case m := <-v.msg:
+			c, found := v.store[m.SenseId]
+			if found {
+				fmt.Println("Sending Ack", m.Id, "to", m.SenseId)
+				fmt.Println("Signed with key", string(c.PrivKey))
+				// TODO write to given sense!
+				// c.Conn.WriteMessage(websocket.BinaryMessage, protoAckMessage)
+			}
+		case <-v.done:
+			fmt.Println("Done")
+			break outer
+		default:
+
+		}
 	}
-}
-
-// register a sense with the given ws connection
-func (v *Ventilator) register(senseId string, conn *websocket.Conn) {
-	v.Lock()
-	defer v.Unlock()
-	v.pairs[senseId] = conn
-	fmt.Printf("Registered: %s\n", senseId)
-}
-
-// deregister a sense
-func (v *Ventilator) deregister(senseId string) {
-	v.Lock()
-	defer v.Unlock()
-	delete(v.pairs, senseId)
-	fmt.Printf("Deregistered: %s\n", senseId)
+	close(v.in)
+	close(v.out)
+	close(v.msg)
+	close(v.raw)
 }
 
 // Listen blocks and wait for messages to be published on the redis channel
@@ -58,24 +78,12 @@ func (v *Ventilator) Listen() {
 		for c.Err() == nil {
 			switch val := psc.Receive().(type) {
 			case redis.Message:
-				jm := &api.JsonMessage{}
-				jsonErr := json.Unmarshal(val.Data, jm)
-				if jsonErr != nil {
-					fmt.Println(jsonErr, string(val.Data))
-					break
+				parsed, err := parse(val.Data)
+				if err != nil {
+					log.Println("Failed to parse message", err)
+					continue
 				}
-
-				fmt.Printf("%s: message: %s\n", val.Channel, val.Data)
-				fmt.Printf("name: %s, id:%d\n", jm.Name, jm.Id)
-
-				v.Lock()
-				conn := v.pairs[jm.Name]
-				v.Unlock()
-				m := serialize(jm.Id)
-				if err := conn.WriteMessage(websocket.BinaryMessage, m); err != nil {
-					v.deregister(jm.Name)
-
-				}
+				v.Receive(parsed)
 			case redis.Subscription:
 				fmt.Printf("%s: %s %d\n", val.Channel, val.Kind, val.Count)
 			case error:
@@ -86,24 +94,37 @@ func (v *Ventilator) Listen() {
 	}
 }
 
-// Publish simulates messeji requests
-func (v *Ventilator) Publish() {
-	t := time.NewTicker(1 * time.Second)
-	c := v.pool.Get()
-	for {
-		select {
-		case <-t.C:
-			names := make([]string, 0)
-			v.Lock()
-			for k, _ := range v.pairs {
-				names = append(names, k)
-			}
-			v.Unlock()
-			for _, name := range names {
-				jm := &api.JsonMessage{Name: name, Id: uint64(time.Now().Unix())}
-				buff, _ := json.Marshal(jm)
-				c.Do("PUBLISH", v.topic, buff)
-			}
-		}
+func NewVentilator(done chan bool, topic string, pool *redis.Pool) *Ventilator {
+	return &Ventilator{
+		store: make(map[string]*SenseConn, 0),
+		in:    make(chan *SenseConn, 2),
+		out:   make(chan string, 2),
+		msg:   make(chan *AckMessageWrapper, 16),
+		raw:   make(chan *api.MessageParts, 16),
+		done:  done,
+		topic: topic,
+		pool:  pool,
 	}
 }
+
+// // Publish simulates messeji requests
+// func (v *Ventilator) Publish() {
+// 	t := time.NewTicker(1 * time.Second)
+// 	c := v.pool.Get()
+// 	for {
+// 		select {
+// 		case <-t.C:
+// 			names := make([]string, 0)
+// 			v.Lock()
+// 			for k, _ := range v.pairs {
+// 				names = append(names, k)
+// 			}
+// 			v.Unlock()
+// 			for _, name := range names {
+// 				jm := &api.JsonMessage{Name: name, Id: uint64(time.Now().Unix())}
+// 				buff, _ := json.Marshal(jm)
+// 				c.Do("PUBLISH", v.topic, buff)
+// 			}
+// 		}
+// 	}
+// }
