@@ -23,6 +23,7 @@ func (v *Ventilator) Receive(parsed *api.MessageParts) {
 }
 
 func (v *Ventilator) Add(senseConn *SenseConn) {
+	log.Printf("Adding: %s, %s", senseConn.SenseId, senseConn.Conn.RemoteAddr().String())
 	v.in <- senseConn
 }
 
@@ -35,6 +36,7 @@ func (v *Ventilator) push(ack *AckMessageWrapper) {
 }
 
 func (v *Ventilator) Run() {
+	fmt.Println("Ventilator running")
 outer:
 	for {
 		select {

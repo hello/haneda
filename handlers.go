@@ -3,19 +3,18 @@ package haneda
 import (
 	"fmt"
 	"github.com/gorilla/websocket"
-	"github.com/hello/haneda/api"
 	"net/http"
 )
 
 type WSHandler struct {
-	stats      chan api.Stat
-	ventilator *Ventilator
+	ventilator  *Ventilator
+	helloServer *HelloServer
 }
 
-func NewWsHandler(stats chan api.Stat, vent *Ventilator) *WSHandler {
+func NewWsHandler(vent *Ventilator, server *HelloServer) *WSHandler {
 	return &WSHandler{
-		stats:      stats,
-		ventilator: vent,
+		ventilator:  vent,
+		helloServer: server,
 	}
 }
 
@@ -46,5 +45,5 @@ func (h WSHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.ventilator.Add(senseConn)
-	go spin(senseConn)
+	go h.helloServer.Spin(senseConn)
 }

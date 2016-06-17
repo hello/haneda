@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
 	"github.com/hello/haneda"
-	"github.com/hello/haneda/api"
 	"net/http"
 )
 
@@ -39,9 +38,6 @@ func webserver(topic string, pool *redis.Pool) {
 }
 
 func main() {
-	stats := make(chan api.Stat, 0)
-	go haneda.DisplayStats(stats)
-
 	redisPool := redis.NewPool(func() (redis.Conn, error) {
 		c, err := redis.Dial("tcp", ":6379")
 
@@ -58,10 +54,14 @@ func main() {
 	vent := haneda.NewVentilator(done, topic, redisPool)
 
 	// go vent.Publish() // only required for testing
+	go vent.Run()
 	go vent.Listen()
 
+	server := haneda.NewHelloServer(vent)
+	go server.Run()
+
 	go webserver(topic, redisPool)
-	wsHandler := haneda.NewWsHandler(stats, vent)
+	wsHandler := haneda.NewWsHandler(vent, server)
 	http.HandleFunc("/health", haneda.HealthHandler)
 	http.Handle("/echo", wsHandler)
 	err := http.ListenAndServe(":8082", nil)

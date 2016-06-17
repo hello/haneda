@@ -38,33 +38,14 @@ type SenseConn struct {
 	PrivKey               []byte
 }
 
-type ApiMessage struct {
-	Type MessageType
-	Body []byte
-}
-
-type MessageType int
-
-const (
-	L MessageType = iota
-	P
-	R
-)
-
 type LogMessageWrapper struct {
 	Id      uint64
 	Content *api.SenseLog
 }
 
-type PeriodicMessage struct {
-	Id      int32  `json:"id"`
-	Temp    int32  `json:"temp"`
-	SenseId string `json:"sense_id"`
-}
-
-type RegisterMessage struct {
-	Id      int32  `json:"id"`
-	SenseId string `json:"sense_id"`
+type PeriodicMessageWrapper struct {
+	Id      uint64
+	Content *api.BatchedPeriodicData
 }
 
 type AckMessageWrapper struct {
@@ -74,46 +55,21 @@ type AckMessageWrapper struct {
 }
 
 type HelloServer struct {
-	Logs          chan *LogMessageWrapper
-	Periodic      chan *PeriodicMessage
-	Registrations chan *RegisterMessage
-	Ventilator    *Ventilator
+	Logs       chan *LogMessageWrapper
+	Periodic   chan *PeriodicMessageWrapper
+	Ventilator *Ventilator
 }
 
 func NewHelloServer(v *Ventilator) *HelloServer {
 	return &HelloServer{
-		Logs:          make(chan *LogMessageWrapper, 2),
-		Periodic:      make(chan *PeriodicMessage, 2),
-		Registrations: make(chan *RegisterMessage, 2),
-		Ventilator:    v,
+		Logs:     make(chan *LogMessageWrapper, 2),
+		Periodic: make(chan *PeriodicMessageWrapper, 2),
+		// TODO ADD MORE
+		Ventilator: v,
 	}
 }
 
-func (h *HelloServer) parse(messageParts *api.MessageParts) {
-	/*
-
-		switch preamble.GetType() {
-		case haneda.Preamble_BATCHED_PERIODIC_DATA:
-			periodic := &api.BatchedPeriodicData{}
-			pbErr := proto.Unmarshal(body, periodic)
-			if pbErr != nil {
-				fmt.Println("here", pbErr)
-				return nil, pbErr
-			}
-		case haneda.Preamble_SENSE_LOG:
-			slog := &api.SenseLog{}
-			pbErr := proto.Unmarshal(body, slog)
-			if pbErr != nil {
-				fmt.Println("log", pbErr)
-				return nil, pbErr
-			}
-			fmt.Println("len logs", len(slog.GetText()))
-		default:
-			fmt.Println("Don't know what that is")
-			return nil, errors.New(fmt.Sprintf("Unknown pb type: %s", preamble.GetType().String()))
-		}
-
-	*/
+func (h *HelloServer) dispatch(messageParts *api.MessageParts) {
 	switch messageParts.Header.GetType() {
 	case haneda.Preamble_SENSE_LOG:
 		m := &api.SenseLog{}
@@ -122,27 +78,68 @@ func (h *HelloServer) parse(messageParts *api.MessageParts) {
 			Id:      messageParts.Header.GetId(),
 			Content: m,
 		}
-
 		h.Logs <- wrapper
 	default:
-		panic("should not happen")
+		// fmt.Println("Unknown", messageParts.Header.GetType().String())
 	}
 }
 
 func (h *HelloServer) Run() {
+	fmt.Println("HelloServer running")
 	for {
 		select {
 		case m := <-h.Logs:
-			fmt.Println("Saving log:", m.Content.GetText())
+			fmt.Println("Saving log, size= ", len(m.Content.GetText()))
 			h.Ventilator.push(&AckMessageWrapper{Id: m.Id, SenseId: m.Content.GetDeviceId()})
 		case m, open := <-h.Ventilator.raw:
 			if !open {
 				fmt.Println("Channel was closed")
 				return
 			}
-			h.parse(m)
+			h.dispatch(m)
 		}
 	}
+}
+
+func (h *HelloServer) Spin(s *SenseConn) {
+	i := 0
+	defer s.Conn.Close()
+	for {
+
+		_, content, err := s.Conn.ReadMessage()
+		if err != nil {
+			fmt.Println("Error reading json.", err)
+			break
+		}
+		mp, err := parse(content)
+		if err != nil {
+			break
+		}
+
+		match := CheckMAC(mp.Body, mp.Sig, []byte("abc"))
+		if !match {
+			fmt.Println("don't match!!!")
+			fmt.Printf("%v\n", mp.Body)
+			fmt.Println("len(content)", len(content))
+			fmt.Printf("%x\n", mp.Sig)
+		}
+
+		h.dispatch(mp)
+		// fmt.Printf("Got message: %s %d\n", pb.GetType().String(), pb.GetId())
+		msgId := mp.Header.GetId()
+		if msgId%uint64(100) == 0 {
+			fmt.Println("msgid:", msgId)
+		}
+
+		newId := uint64(mp.Header.GetId())
+		m := serialize(newId)
+		if err = s.Conn.WriteMessage(websocket.BinaryMessage, m); err != nil {
+			fmt.Println(err)
+			break
+		}
+		i++
+	}
+	fmt.Println("Processed:", i)
 }
 
 func extractBasicAuth(r *http.Request, f api.AuthenticateFunc) (string, error) {
@@ -224,47 +221,6 @@ func serialize(id uint64) []byte {
 	pb.Id = &id
 	m, _ := proto.Marshal(pb)
 	return m
-}
-
-func spin(s *SenseConn) {
-	i := 0
-	defer s.Conn.Close()
-	for {
-
-		_, content, err := s.Conn.ReadMessage()
-		if err != nil {
-			fmt.Println("Error reading json.", err)
-			break
-		}
-
-		mp, err := parse(content)
-		if err != nil {
-			break
-		}
-
-		match := CheckMAC(mp.Body, mp.Sig, []byte("abc"))
-		if !match {
-			fmt.Println("don't match!!!")
-			fmt.Printf("%v\n", mp.Body)
-			fmt.Println("len(content)", len(content))
-			fmt.Printf("%x\n", mp.Sig)
-		}
-
-		// fmt.Printf("Got message: %s %d\n", pb.GetType().String(), pb.GetId())
-		msgId := mp.Header.GetId()
-		if msgId%uint64(100) == 0 {
-			fmt.Println("msgid:", msgId)
-		}
-
-		newId := uint64(mp.Header.GetId())
-		m := serialize(newId)
-		if err = s.Conn.WriteMessage(websocket.BinaryMessage, m); err != nil {
-			fmt.Println(err)
-			break
-		}
-		i++
-	}
-	fmt.Println("Processed:", i)
 }
 
 func HealthHandler(w http.ResponseWriter, r *http.Request) {
