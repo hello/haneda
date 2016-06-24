@@ -55,6 +55,50 @@ func (s *Sense15) write(message []byte) {
 	}
 }
 
+func (s *Sense15) periodic(messageId uint64) *MessageParts {
+	header := &haneda.Preamble{}
+	header.Type = haneda.Preamble_BATCHED_PERIODIC_DATA.Enum()
+	header.Id = proto.Uint64(messageId)
+
+	batched := &api.BatchedPeriodicData{}
+	periodic := &api.PeriodicData{}
+	periodic.Temperature = proto.Int32(27)
+
+	batched.DeviceId = &s.name
+	batched.FirmwareVersion = proto.Int32(888)
+	batched.Data = append(batched.Data, periodic)
+
+	body, pbErr := proto.Marshal(batched)
+	if pbErr != nil {
+		log.Println(pbErr)
+		s.done <- true
+	}
+
+	mp := &MessageParts{
+		Header: header,
+		Body:   body,
+	}
+	return mp
+}
+
+func (s *Sense15) genLogs(messageId uint64, logs []string) *MessageParts {
+	pb := &haneda.Preamble{}
+	pb.Type = haneda.Preamble_SENSE_LOG.Enum()
+	pb.Id = proto.Uint64(messageId)
+
+	sLog := &api.SenseLog{}
+	combined := strings.Join(logs, "\n")
+	sLog.Text = &combined
+	sLog.DeviceId = proto.String(s.name)
+	body, _ := proto.Marshal(sLog)
+
+	mp := &MessageParts{
+		Header: pb,
+		Body:   body,
+	}
+	return mp
+}
+
 func (s *Sense15) Send() {
 	ticker := time.NewTicker(s.sleep)
 	defer ticker.Stop()
@@ -65,28 +109,7 @@ func (s *Sense15) Send() {
 	for {
 		select {
 		case <-ticker.C:
-			header := &haneda.Preamble{}
-			header.Type = haneda.Preamble_BATCHED_PERIODIC_DATA.Enum()
-			header.Id = proto.Uint64(msgId)
-
-			batched := &api.BatchedPeriodicData{}
-			periodic := &api.PeriodicData{}
-			periodic.Temperature = proto.Int32(27)
-
-			batched.DeviceId = &s.name
-			batched.FirmwareVersion = proto.Int32(888)
-			batched.Data = append(batched.Data, periodic)
-
-			body, pbErr := proto.Marshal(batched)
-			if pbErr != nil {
-				log.Println(pbErr)
-				s.done <- true
-			}
-
-			mp := &MessageParts{
-				Header: header,
-				Body:   body,
-			}
+			mp := s.periodic(msgId)
 			env, err := s.auth.Sign(mp)
 			if err != nil {
 				log.Println(err)
@@ -104,21 +127,7 @@ func (s *Sense15) Send() {
 			msgId++
 		case logMessage := <-s.logs:
 			if len(logs) == 10 {
-				fmt.Println("Sending logMessage", logMessage)
-				pb := &haneda.Preamble{}
-				pb.Type = haneda.Preamble_SENSE_LOG.Enum()
-				pb.Id = proto.Uint64(msgId)
-
-				sLog := &api.SenseLog{}
-				combined := strings.Join(logs, "\n")
-				sLog.Text = &combined
-				sLog.DeviceId = proto.String(s.name)
-				body, _ := proto.Marshal(sLog)
-
-				mp := &MessageParts{
-					Header: pb,
-					Body:   body,
-				}
+				mp := s.genLogs(msgId, logs)
 
 				env, err := s.auth.Sign(mp)
 				if err != nil {

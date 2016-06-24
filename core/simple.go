@@ -113,6 +113,7 @@ outer:
 }
 
 func dispatch(bridge *Bridge, message *sense.MessageParts, s *SenseConn) error {
+	bridge.Route(message)
 	switch message.Header.GetType() {
 	case haneda.Preamble_SENSE_LOG:
 		m := &api.SenseLog{}
@@ -121,7 +122,7 @@ func dispatch(bridge *Bridge, message *sense.MessageParts, s *SenseConn) error {
 	case haneda.Preamble_BATCHED_PERIODIC_DATA:
 		m := &api.BatchedPeriodicData{}
 		proto.Unmarshal(message.Body, m)
-		return bridge.PeriodicData(m)
+		return bridge.PeriodicData(m, s)
 	default:
 		// fmt.Println("Unknown", messageParts.Header.GetType().String())
 	}
