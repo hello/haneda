@@ -23,7 +23,7 @@ func basicAuth(username, password string) string {
 	return base64.StdEncoding.EncodeToString([]byte(auth))
 }
 
-func displayName(s sense.Sense) {
+func displayName(s sense.Client) {
 	log.Println(s.Id())
 }
 
@@ -37,7 +37,9 @@ func main() {
 	done := make(chan bool, 0)
 	signal.Notify(interrupt, os.Interrupt)
 	name := "Sense1"
-	fakeSense := sense.New15(name, time.Duration(20*time.Millisecond), interrupt, done)
+	store := sense.NewStore()
+	go store.State()
+	fakeSense := sense.New15(name, time.Duration(200*time.Millisecond), interrupt, done, store)
 
 	headers := http.Header{}
 	headers.Add("Authorization", "Basic "+basicAuth(name, "foo"))

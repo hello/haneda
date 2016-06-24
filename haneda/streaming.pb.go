@@ -2,15 +2,6 @@
 // source: streaming.proto
 // DO NOT EDIT!
 
-/*
-Package haneda is a generated protocol buffer package.
-
-It is generated from these files:
-	streaming.proto
-
-It has these top-level messages:
-	Preamble
-*/
 package haneda
 
 import proto "github.com/golang/protobuf/proto"
@@ -21,10 +12,6 @@ import math "math"
 var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
-
-// This is a compile-time assertion to ensure that this generated file
-// is compatible with the proto package it is being compiled against.
-const _ = proto.ProtoPackageIsVersion1
 
 type PreamblePbType int32
 
@@ -70,7 +57,7 @@ func (x *PreamblePbType) UnmarshalJSON(data []byte) error {
 	*x = PreamblePbType(value)
 	return nil
 }
-func (PreamblePbType) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{0, 0} }
+func (PreamblePbType) EnumDescriptor() ([]byte, []int) { return fileDescriptor1, []int{0, 0} }
 
 type PreambleAuthType int32
 
@@ -107,7 +94,7 @@ func (x *PreambleAuthType) UnmarshalJSON(data []byte) error {
 	*x = PreambleAuthType(value)
 	return nil
 }
-func (PreambleAuthType) EnumDescriptor() ([]byte, []int) { return fileDescriptor0, []int{0, 1} }
+func (PreambleAuthType) EnumDescriptor() ([]byte, []int) { return fileDescriptor1, []int{0, 1} }
 
 type Preamble struct {
 	Type             *PreamblePbType   `protobuf:"varint,1,req,name=type,enum=PreamblePbType" json:"type,omitempty"`
@@ -119,7 +106,7 @@ type Preamble struct {
 func (m *Preamble) Reset()                    { *m = Preamble{} }
 func (m *Preamble) String() string            { return proto.CompactTextString(m) }
 func (*Preamble) ProtoMessage()               {}
-func (*Preamble) Descriptor() ([]byte, []int) { return fileDescriptor0, []int{0} }
+func (*Preamble) Descriptor() ([]byte, []int) { return fileDescriptor1, []int{0} }
 
 func (m *Preamble) GetType() PreamblePbType {
 	if m != nil && m.Type != nil {
@@ -148,7 +135,7 @@ func init() {
 	proto.RegisterEnum("PreambleAuthType", PreambleAuthType_name, PreambleAuthType_value)
 }
 
-var fileDescriptor0 = []byte{
+var fileDescriptor1 = []byte{
 	// 275 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0x44, 0x8e, 0xcf, 0x4e, 0xf2, 0x40,
 	0x14, 0xc5, 0x3f, 0xa6, 0xfd, 0x2c, 0x5c, 0x03, 0x0e, 0xa3, 0x26, 0x75, 0xa3, 0xd8, 0x15, 0xab,

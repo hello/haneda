@@ -1,10 +1,6 @@
 package sense
 
 import (
-	"bytes"
-	"crypto/hmac"
-	"crypto/sha1"
-	"encoding/binary"
 	"fmt"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
@@ -18,7 +14,7 @@ import (
 	"time"
 )
 
-type Sense interface {
+type Client interface {
 	Id() string
 	Connect(u url.URL, h http.Header) error
 	Disconnect() error
@@ -33,6 +29,9 @@ type Sense15 struct {
 	done      chan bool
 	name      string
 	logs      chan string
+	privKey   []byte
+	auth      *SenseAuth
+	store     *Store
 }
 
 func (s *Sense15) Id() string {
@@ -48,29 +47,12 @@ func (s *Sense15) Connect(u url.URL, headers http.Header) error {
 	return nil
 }
 
-func assemble(header, body, key []byte) []byte {
-	hm := hmac.New(sha1.New, key)
-	hm.Write(body)
-
-	sig := hm.Sum(nil)
-	signed := make([]byte, 0)
-	envBuff := make([]byte, 0)
-
-	buffer := bytes.NewBuffer(signed)
-	buffer.Write(header)
-
-	env := bytes.NewBuffer(envBuff)
-	payload := buffer.Bytes()
-	headerLen := uint64(len(payload))
-	binary.Write(env, binary.LittleEndian, headerLen)
-
-	env.Write(payload)
-
-	bodyLen := uint64(len(body))
-	binary.Write(env, binary.LittleEndian, bodyLen)
-	env.Write(body)
-	env.Write(sig)
-	return env.Bytes()
+func (s *Sense15) write(message []byte) {
+	err := s.conn.WriteMessage(websocket.BinaryMessage, message)
+	if err != nil {
+		log.Println("write:", err)
+		s.done <- true
+	}
 }
 
 func (s *Sense15) Send() {
@@ -83,10 +65,9 @@ func (s *Sense15) Send() {
 	for {
 		select {
 		case <-ticker.C:
-			pb := &haneda.Preamble{}
-			pb.Type = haneda.Preamble_BATCHED_PERIODIC_DATA.Enum()
-			pb.Id = proto.Uint64(msgId)
-			header, _ := proto.Marshal(pb)
+			header := &haneda.Preamble{}
+			header.Type = haneda.Preamble_BATCHED_PERIODIC_DATA.Enum()
+			header.Id = proto.Uint64(msgId)
 
 			batched := &api.BatchedPeriodicData{}
 			periodic := &api.PeriodicData{}
@@ -102,36 +83,60 @@ func (s *Sense15) Send() {
 				s.done <- true
 			}
 
-			env := assemble(header, body, []byte("abc"))
-			err := s.conn.WriteMessage(websocket.BinaryMessage, env)
+			mp := &MessageParts{
+				Header: header,
+				Body:   body,
+			}
+			env, err := s.auth.Sign(mp)
 			if err != nil {
-				log.Println("write:", err)
+				log.Println(err)
 				s.done <- true
 			}
+
+			duplicate := s.store.Save(msgId)
+			if duplicate != nil {
+				log.Println("duplicate:", msgId)
+				s.done <- true
+			}
+			s.write(env)
+			fmt.Println("<--", mp.Header.GetType(), msgId)
 			i++
 			msgId++
 		case logMessage := <-s.logs:
-			if len(logs) == 200 {
+			if len(logs) == 10 {
 				fmt.Println("Sending logMessage", logMessage)
 				pb := &haneda.Preamble{}
 				pb.Type = haneda.Preamble_SENSE_LOG.Enum()
 				pb.Id = proto.Uint64(msgId)
-				header, _ := proto.Marshal(pb)
 
 				sLog := &api.SenseLog{}
 				combined := strings.Join(logs, "\n")
 				sLog.Text = &combined
+				sLog.DeviceId = proto.String(s.name)
 				body, _ := proto.Marshal(sLog)
 
-				env := assemble(header, body, []byte("abc"))
-				err := s.conn.WriteMessage(websocket.BinaryMessage, env)
+				mp := &MessageParts{
+					Header: pb,
+					Body:   body,
+				}
+
+				env, err := s.auth.Sign(mp)
 				if err != nil {
-					log.Println("write:", err)
+					log.Println(err)
 					s.done <- true
 				}
+
+				s.write(env)
+				duplicate := s.store.Save(msgId)
+				if duplicate != nil {
+					log.Println("duplicate:", msgId)
+					s.done <- true
+				}
+				fmt.Println("<--", mp.Header.GetType(), msgId)
 				i++
 				msgId++
 				logs = make([]string, 0)
+
 			} else {
 				logs = append(logs, logMessage)
 			}
@@ -146,7 +151,6 @@ func (s *Sense15) Send() {
 				log.Println("write close:", err)
 
 			}
-
 			s.Disconnect()
 			s.done <- true
 		}
@@ -165,21 +169,44 @@ func (s *Sense15) Receive() {
 			log.Println("read:", err)
 			break
 		}
-		m := &haneda.Preamble{}
-		proto.Unmarshal(message, m)
-		lm := fmt.Sprintf("%s: %d\n", s.name, m.GetId())
+
+		mp, parseErr := s.auth.Parse(message)
+		if parseErr != nil {
+			log.Println("parseErr", parseErr)
+			continue
+		}
+
+		switch mp.Header.GetType() {
+		case haneda.Preamble_ACK:
+			ackMessage := &haneda.Ack{}
+			err := proto.Unmarshal(mp.Body, ackMessage)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			s.store.Expire(ackMessage.GetMessageId())
+			fmt.Println("-->", mp.Header.GetType(), ackMessage.GetMessageId())
+		default:
+			fmt.Println("-->", mp.Header.GetType())
+		}
+
+		lm := fmt.Sprintf("%s: %d\n", s.name, mp.Header.GetId())
 		s.logs <- lm
 	}
 
 	log.Println("Done receiving")
 }
 
-func New15(name string, sleep time.Duration, interrupt chan os.Signal, done chan bool) *Sense15 {
+func New15(name string, sleep time.Duration, interrupt chan os.Signal, done chan bool, store *Store) *Sense15 {
+	privKey := []byte("1234567891234567")
 	return &Sense15{
 		sleep:     sleep,
 		interrupt: interrupt,
 		name:      name,
 		done:      done,
 		logs:      make(chan string, 16),
+		privKey:   privKey,
+		auth:      &SenseAuth{key: privKey},
+		store:     store,
 	}
 }

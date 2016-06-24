@@ -8,6 +8,9 @@ Package api is a generated protocol buffer package.
 It is generated from these files:
 	log.proto
 	periodic.server.proto
+	morpheus_ble.proto
+	sync_response.proto
+	audio_control.proto
 
 It has these top-level messages:
 	SenseLog
@@ -15,6 +18,14 @@ It has these top-level messages:
 	BatchedPeriodicData
 	AccountMetadata
 	BatchPeriodicDataWorker
+	WifiEndpoint
+	PillData
+	MorpheusCommand
+	BatchedPillData
+	SyncResponse
+	BatchedPillSettings
+	AudioClassifierMessage
+	AudioControl
 */
 package api
 

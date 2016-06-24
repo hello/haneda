@@ -3,7 +3,8 @@ package main
 import (
 	"fmt"
 	"github.com/garyburd/redigo/redis"
-	"github.com/hello/haneda"
+	"github.com/hello/haneda/core"
+	"github.com/hello/haneda/sense"
 	"net/http"
 )
 
@@ -23,7 +24,7 @@ func (h *PublishHanlder) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%s", msg)
 }
 
-func webserver(topic string, pool *redis.Pool) {
+func webserver(topic string, pool *redis.Pool, messages chan *sense.MessageParts) {
 
 	ph := &PublishHanlder{
 		topic: topic,
@@ -35,6 +36,11 @@ func webserver(topic string, pool *redis.Pool) {
 	if err != nil {
 		panic("ListenAndServe: " + err.Error())
 	}
+}
+
+func HealthHandler(w http.ResponseWriter, r *http.Request) {
+	fmt.Println("/health")
+	fmt.Fprintf(w, "%s\n", "ok")
 }
 
 func main() {
@@ -51,18 +57,15 @@ func main() {
 	topic := "example"
 	defer redisPool.Close()
 	done := make(chan bool, 0)
-	vent := haneda.NewVentilator(done, topic, redisPool)
-
 	// go vent.Publish() // only required for testing
-	go vent.Run()
-	go vent.Listen()
+	messages := make(chan *sense.MessageParts, 2)
+	endpoint := "http://localhost:5555"
+	simple := core.NewSimpleHelloServer(endpoint, topic, redisPool, done, messages)
+	go simple.Start()
 
-	server := haneda.NewHelloServer(vent)
-	go server.Run()
-
-	go webserver(topic, redisPool)
-	wsHandler := haneda.NewWsHandler(vent, server)
-	http.HandleFunc("/health", haneda.HealthHandler)
+	go webserver(topic, redisPool, messages)
+	wsHandler := core.NewSimpleWsHandler(simple)
+	http.HandleFunc("/health", HealthHandler)
 	http.Handle("/echo", wsHandler)
 	err := http.ListenAndServe(":8082", nil)
 	if err != nil {
