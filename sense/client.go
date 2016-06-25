@@ -7,6 +7,7 @@ import (
 	"github.com/hello/haneda/api"
 	"github.com/hello/haneda/haneda"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -48,6 +49,9 @@ func (s *Sense15) Connect(u url.URL, headers http.Header) error {
 }
 
 func (s *Sense15) write(message []byte) {
+	rand.Seed(time.Now().UnixNano())
+	n := rand.Int31n(1000)
+	time.Sleep(time.Duration(n) * time.Millisecond)
 	err := s.conn.WriteMessage(websocket.BinaryMessage, message)
 	if err != nil {
 		log.Println("write:", err)
@@ -109,6 +113,7 @@ func (s *Sense15) Send() {
 	for {
 		select {
 		case <-ticker.C:
+
 			mp := s.periodic(msgId)
 			env, err := s.auth.Sign(mp)
 			if err != nil {
@@ -122,7 +127,7 @@ func (s *Sense15) Send() {
 				s.done <- true
 			}
 			s.write(env)
-			fmt.Println("<--", mp.Header.GetType(), msgId)
+			log.Println("<--", mp.Header.GetType(), msgId)
 			i++
 			msgId++
 		case logMessage := <-s.logs:
@@ -141,7 +146,7 @@ func (s *Sense15) Send() {
 					log.Println("duplicate:", msgId)
 					s.done <- true
 				}
-				fmt.Println("<--", mp.Header.GetType(), msgId)
+				log.Println("<--", mp.Header.GetType(), msgId)
 				i++
 				msgId++
 				logs = make([]string, 0)
@@ -154,7 +159,7 @@ func (s *Sense15) Send() {
 			log.Println("interrupt")
 			// To cleanly close a connection, a client should send a close
 			// frame and wait for the server to close the connection.
-			fmt.Println("Sent", s.conn.LocalAddr(), i)
+			log.Println("Sent", s.conn.LocalAddr(), i)
 			err := s.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 			if err != nil {
 				log.Println("write close:", err)
@@ -194,9 +199,18 @@ func (s *Sense15) Receive() {
 				continue
 			}
 			s.store.Expire(ackMessage.GetMessageId())
-			fmt.Println("-->", mp.Header.GetType(), ackMessage.GetMessageId())
+			log.Println("-->", mp.Header.GetType(), ackMessage.GetMessageId())
+		case haneda.Preamble_SYNC_RESPONSE:
+			syncResp := &api.SyncResponse{}
+			err := proto.Unmarshal(mp.Body, syncResp)
+			if err != nil {
+				log.Println(err)
+				continue
+			}
+			log.Println("-->", mp.Header.GetType(), syncResp.GetRingTimeAck())
 		default:
-			fmt.Println("-->", mp.Header.GetType())
+			log.Println("-->", mp.Header.GetType())
+
 		}
 
 		lm := fmt.Sprintf("%s: %d\n", s.name, mp.Header.GetId())
@@ -206,8 +220,9 @@ func (s *Sense15) Receive() {
 	log.Println("Done receiving")
 }
 
-func New15(name string, sleep time.Duration, interrupt chan os.Signal, done chan bool, store *Store) *Sense15 {
+func New15(name string, sleep time.Duration, interrupt chan os.Signal, done chan bool) *Sense15 {
 	privKey := []byte("1234567891234567")
+	store := NewStore()
 	return &Sense15{
 		sleep:     sleep,
 		interrupt: interrupt,

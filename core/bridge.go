@@ -3,11 +3,11 @@ package core
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/hello/haneda/api"
 	"github.com/hello/haneda/haneda"
 	"github.com/hello/haneda/sense"
+	"io/ioutil"
 	"log"
 	"net/http"
 )
@@ -38,7 +38,8 @@ func (b *Bridge) Route(mp *sense.MessageParts) error {
 		log.Println("not found", mp.Header.GetType())
 	}
 
-	fmt.Println(mp.Header.GetType().String(), route)
+	log.Println(mp.Header.GetType().String(), route)
+	return nil
 }
 
 func headers(req *http.Request, s *SenseConn) *http.Request {
@@ -75,13 +76,15 @@ func (b *Bridge) Logs(message *api.SenseLog, s *SenseConn) error {
 
 }
 
-func (b *Bridge) PeriodicData(message *api.BatchedPeriodicData, s *SenseConn) error {
+func (b *Bridge) PeriodicData(message *api.BatchedPeriodicData, s *SenseConn) ([]byte, error) {
 	log.Println("sending periodic data to:", b.endpoint)
 	content, _ := proto.Marshal(message)
 
+	empty := make([]byte, 0)
+
 	signed, err := sign(content, s.PrivKey)
 	if err != nil {
-		return err
+		return empty, err
 	}
 
 	body := bytes.NewReader(signed)
@@ -91,11 +94,14 @@ func (b *Bridge) PeriodicData(message *api.BatchedPeriodicData, s *SenseConn) er
 
 	if err != nil {
 		log.Println(err)
-		return err
+		return empty, err
 	}
 
 	if resp.StatusCode != 200 {
-		return errors.New("Got non 200 from Suripu service")
+		return empty, errors.New("Got non 200 from Suripu service")
 	}
-	return nil
+
+	defer resp.Body.Close()
+	data, err := ioutil.ReadAll(resp.Body)
+	return data, err
 }
