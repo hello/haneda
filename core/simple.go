@@ -31,12 +31,17 @@ func (h *SimpleWsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// 	http.Error(w, "authorization failed", http.StatusUnauthorized)
 	// 	return
 	// }
+
+	sense := r.Header.Get("X-Hello-Sense-Id")
+	fmt.Println("Sense=", sense)
+	if sense == "" {
+		http.Error(w, "Missing header with Sense ID", 400)
+		return
+	}
 	conn, err := websocket.Upgrade(w, r, w.Header(), 1024, 1024)
 	if err != nil {
 		http.Error(w, "Could not open websocket connection", http.StatusBadRequest)
 	}
-
-	sense := r.Header.Get("X-Hello-Sense-Id")
 	senseConn := &SenseConn{
 		SenseId:               sense,
 		Conn:                  conn,

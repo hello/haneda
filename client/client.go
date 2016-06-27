@@ -46,6 +46,7 @@ func main() {
 
 		headers := http.Header{}
 		headers.Add("Authorization", "Basic "+basicAuth(name, "foo"))
+		headers.Add("X-Hello-Sense-Id", name)
 		// u := url.URL{Scheme: "wss", Host: *addr, Path: "/echo"}
 		u := url.URL{Scheme: "ws", Host: *addr, Path: "/protobuf"}
 		log.Printf("connecting to %s\n", u.String())
