@@ -28,6 +28,8 @@ func displayName(s sense.Client) {
 	log.Println(s.Id())
 }
 
+// var addr = flag.String("addr", "ws-dev.hello.is", "http service address")
+
 var addr = flag.String("addr", "localhost:8082", "http service address")
 
 func main() {
@@ -38,14 +40,14 @@ func main() {
 	done := make(chan bool, 0)
 	signal.Notify(interrupt, os.Interrupt)
 
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 1; i++ {
 		name := fmt.Sprintf("Sense%d", i)
-		fakeSense := sense.New15(name, time.Duration(500*time.Millisecond), interrupt, done)
+		fakeSense := sense.New15(name, time.Duration(1000*time.Millisecond), interrupt, done)
 
 		headers := http.Header{}
 		headers.Add("Authorization", "Basic "+basicAuth(name, "foo"))
 		// u := url.URL{Scheme: "wss", Host: *addr, Path: "/echo"}
-		u := url.URL{Scheme: "ws", Host: *addr, Path: "/echo"}
+		u := url.URL{Scheme: "ws", Host: *addr, Path: "/protobuf"}
 		log.Printf("connecting to %s\n", u.String())
 
 		err := fakeSense.Connect(u, headers)

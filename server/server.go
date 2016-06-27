@@ -59,6 +59,7 @@ func main() {
 	done := make(chan bool, 0)
 	// go vent.Publish() // only required for testing
 	messages := make(chan *sense.MessageParts, 2)
+	// endpoint := "https://dev-in.hello.is"
 	endpoint := "http://localhost:5555"
 	simple := core.NewSimpleHelloServer(endpoint, topic, redisPool, done, messages)
 	go simple.Start()
@@ -66,7 +67,7 @@ func main() {
 	go webserver(topic, redisPool, messages)
 	wsHandler := core.NewSimpleWsHandler(simple)
 	http.HandleFunc("/health", HealthHandler)
-	http.Handle("/echo", wsHandler)
+	http.Handle("/protobuf", wsHandler)
 	err := http.ListenAndServe(":8082", nil)
 	if err != nil {
 		panic("ListenAndServe: " + err.Error())

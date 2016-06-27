@@ -103,5 +103,5 @@ func (b *Bridge) PeriodicData(message *api.BatchedPeriodicData, s *SenseConn) ([
 
 	defer resp.Body.Close()
 	data, err := ioutil.ReadAll(resp.Body)
-	return data, err
+	return data[48:], err
 }

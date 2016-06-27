@@ -25,17 +25,18 @@ func NewSimpleWsHandler(server *SimpleHelloServer) *SimpleWsHandler {
 }
 
 func (h *SimpleWsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	sense, err := extractBasicAuth(r, checkCreds)
-	if err != nil {
-		log.Println("Bad auth")
-		http.Error(w, "authorization failed", http.StatusUnauthorized)
-		return
-	}
+	// sense, err := extractBasicAuth(r, checkCreds)
+	// if err != nil {
+	// 	log.Println("Bad auth")
+	// 	http.Error(w, "authorization failed", http.StatusUnauthorized)
+	// 	return
+	// }
 	conn, err := websocket.Upgrade(w, r, w.Header(), 1024, 1024)
 	if err != nil {
 		http.Error(w, "Could not open websocket connection", http.StatusBadRequest)
 	}
 
+	sense := r.Header.Get("X-Hello-Sense-Id")
 	senseConn := &SenseConn{
 		SenseId:               sense,
 		Conn:                  conn,
@@ -151,35 +152,31 @@ func (h *SimpleHelloServer) Spin(s *SenseConn, sub chan *sense.MessageParts) {
 			break
 		}
 
+		// prepare ack message
+		ack := &haneda.Ack{}
+		ack.MessageId = proto.Uint64(mp.Header.GetId())
+		ack.Status = haneda.Ack_SUCCESS.Enum()
+
 		outbox := make([]*sense.MessageParts, 0)
 		resp, err := dispatch(h.bridge, mp, s)
 		if err != nil {
+			// Override status since bridge responded with error
+			ack.Status = haneda.Ack_CLIENT_REQUEST_ERROR.Enum()
+			fmt.Println(mp.Header.GetId(), "Ack_CLIENT_REQUEST_ERROR")
 			fmt.Println(err)
-			switch mp.Header.GetType() {
-			case haneda.Preamble_BATCHED_PERIODIC_DATA:
-				// we want to fail if we can't persist periodic data
-				break
-			default:
-				log.Println("ignoring error", mp.Header.GetType())
-			}
-		} else {
-
-			// send ack
-			ack := &haneda.Ack{}
-			ack.MessageId = proto.Uint64(mp.Header.GetId())
-
-			body, _ := proto.Marshal(ack)
-
-			header := &haneda.Preamble{}
-			header.Type = haneda.Preamble_ACK.Enum()
-
-			out := &sense.MessageParts{
-				Header: header,
-				Body:   body,
-			}
-
-			outbox = append(outbox, out)
 		}
+
+		body, _ := proto.Marshal(ack)
+
+		header := &haneda.Preamble{}
+		header.Type = haneda.Preamble_ACK.Enum()
+
+		out := &sense.MessageParts{
+			Header: header,
+			Body:   body,
+		}
+
+		outbox = append(outbox, out)
 
 		switch mp.Header.GetType() {
 		case haneda.Preamble_BATCHED_PERIODIC_DATA:
@@ -187,16 +184,13 @@ func (h *SimpleHelloServer) Spin(s *SenseConn, sub chan *sense.MessageParts) {
 			syncHeader.Type = haneda.Preamble_SYNC_RESPONSE.Enum()
 			syncHeader.Id = proto.Uint64(uint64(time.Now().UnixNano()))
 
-			syncResp := &api.SyncResponse{}
-			syncResp.RingTimeAck = proto.String("From proxy")
+			// syncResp := &api.SyncResponse{}
+			// syncResp.RingTimeAck = proto.String("From proxy")
 
-			syncBody, _ := proto.Marshal(syncResp)
-			if len(resp) > 48 {
-				syncBody = resp[48:]
-			}
+			// syncBody, _ := proto.Marshal(syncResp)
 			out2 := &sense.MessageParts{
 				Header: syncHeader,
-				Body:   syncBody,
+				Body:   resp,
 			}
 			outbox = append(outbox, out2)
 		default:
