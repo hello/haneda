@@ -31,7 +31,7 @@ func NewAuth(key []byte) *SenseAuth {
 func (s *SenseAuth) Parse(content []byte) (*MessageParts, error) {
 
 	bbuf := bytes.NewReader(content)
-	var headerLen uint64
+	var headerLen uint32
 	err := binary.Read(bbuf, binary.LittleEndian, &headerLen)
 	if err != nil {
 		fmt.Println(err)
@@ -41,10 +41,10 @@ func (s *SenseAuth) Parse(content []byte) (*MessageParts, error) {
 	header := make([]byte, headerLen)
 	n, err := bbuf.Read(header)
 
-	if uint64(n) != headerLen {
+	if uint32(n) != headerLen {
 		return nil, errors.New("header Len don't match")
 	}
-	var bodyLen uint64
+	var bodyLen uint32
 	err = binary.Read(bbuf, binary.LittleEndian, &bodyLen)
 	if err != nil {
 		return nil, err
@@ -53,7 +53,7 @@ func (s *SenseAuth) Parse(content []byte) (*MessageParts, error) {
 	body := make([]byte, bodyLen)
 	n, err = bbuf.Read(body)
 
-	if uint64(n) != bodyLen {
+	if uint32(n) != bodyLen {
 		return nil, errors.New("body Len don't match")
 	}
 
@@ -91,7 +91,7 @@ func (s *SenseAuth) Sign(mp *MessageParts) ([]byte, error) {
 
 	headerBytes, _ := proto.Marshal(mp.Header)
 
-	headerLen := uint64(len(headerBytes))
+	headerLen := uint32(len(headerBytes))
 	err := binary.Write(bbuf, binary.LittleEndian, headerLen)
 	if err != nil {
 		fmt.Println(err)
@@ -100,11 +100,11 @@ func (s *SenseAuth) Sign(mp *MessageParts) ([]byte, error) {
 
 	n, err := bbuf.Write(headerBytes)
 
-	if uint64(n) != headerLen {
+	if uint32(n) != headerLen {
 		return empty, errors.New("could not write full header")
 	}
 
-	bodyLen := uint64(len(mp.Body))
+	bodyLen := uint32(len(mp.Body))
 	err = binary.Write(bbuf, binary.LittleEndian, bodyLen)
 	if err != nil {
 		return empty, err
@@ -112,7 +112,7 @@ func (s *SenseAuth) Sign(mp *MessageParts) ([]byte, error) {
 
 	n, err = bbuf.Write(mp.Body)
 
-	if uint64(n) != bodyLen {
+	if uint32(n) != bodyLen {
 		return empty, errors.New("body Len don't match")
 	}
 
