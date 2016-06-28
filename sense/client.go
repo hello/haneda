@@ -220,8 +220,7 @@ func (s *Sense15) Receive() {
 	log.Println("Done receiving")
 }
 
-func New15(name string, sleep time.Duration, interrupt chan os.Signal, done chan bool) *Sense15 {
-	privKey := []byte("1234567891234567")
+func New15(name string, sleep time.Duration, interrupt chan os.Signal, done chan bool, privKey []byte) *Sense15 {
 	store := NewStore()
 	return &Sense15{
 		sleep:     sleep,
