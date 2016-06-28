@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+var upgrader = websocket.Upgrader{} // use default options
+
 type SimpleWsHandler struct {
 	server *SimpleHelloServer
 }
@@ -33,7 +35,7 @@ func (h *SimpleWsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// }
 
 	sense := r.Header.Get("X-Hello-Sense-Id")
-	fmt.Println("Sense=", sense)
+	fmt.Printf("sense_id=%s ip_address=%s\n", sense, r.RemoteAddr)
 	if sense == "" {
 		http.Error(w, "Missing header with Sense ID", 400)
 		return
@@ -46,16 +48,18 @@ func (h *SimpleWsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := websocket.Upgrade(w, r, w.Header(), 1024, 1024)
+	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		http.Error(w, "Could not open websocket connection", http.StatusBadRequest)
+		log.Println(err)
+		// http.Error(w, "Could not open websocket connection", http.StatusBadRequest)
+		return
 	}
 	senseConn := &SenseConn{
 		SenseId:               sense,
 		Conn:                  conn,
 		TopFirmwareVersion:    "top",    // get from headers
 		MiddleFirmwareVersion: "middle", // get from headers
-		PrivKey:               key,      // get from keystore
+		PrivKey:               key,
 	}
 	c := h.server.register(sense)
 	go h.server.Spin(senseConn, c)
@@ -148,6 +152,11 @@ func dispatch(bridge *Bridge, message *sense.MessageParts, s *SenseConn) ([]byte
 }
 
 func (h *SimpleHelloServer) Spin(s *SenseConn, sub chan *sense.MessageParts) {
+	if s.Conn == nil {
+		fmt.Println("Can't spin ws thread, conn is nil:", s.SenseId)
+		return
+	}
+
 	auth := sense.NewAuth(s.PrivKey, s.SenseId)
 
 	i := 0
@@ -155,14 +164,13 @@ func (h *SimpleHelloServer) Spin(s *SenseConn, sub chan *sense.MessageParts) {
 	self := make(chan []byte, 0)
 
 	go write(s, sub, self)
-
 	for {
 		_, content, err := s.Conn.ReadMessage()
-		fmt.Println("content", content)
 		if err != nil {
 			log.Println("Error reading.", err)
 			break
 		}
+
 		mp, err := auth.Parse(content)
 		if err != nil {
 			log.Println(s.SenseId, err)
