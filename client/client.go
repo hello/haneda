@@ -8,6 +8,7 @@ package main
 
 import (
 	"encoding/base64"
+	// "encoding/hex"
 	"flag"
 	"fmt"
 	"github.com/hello/haneda/sense"
@@ -28,7 +29,9 @@ func displayName(s sense.Client) {
 	log.Println(s.Id())
 }
 
-var addr = flag.String("addr", "localhost:8082", "http service address")
+// var addr = flag.String("addr", "ws-dev.hello.is", "http service address")
+
+var addr = flag.String("addr", "0.0.0.0:8082", "http service address")
 
 func main() {
 	flag.Parse()
@@ -38,14 +41,20 @@ func main() {
 	done := make(chan bool, 0)
 	signal.Notify(interrupt, os.Interrupt)
 
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 1; i++ {
 		name := fmt.Sprintf("Sense%d", i)
-		fakeSense := sense.New15(name, time.Duration(500*time.Millisecond), interrupt, done)
+		name = "XXXXXXXXXXXXXXXX"
+		// name = "5A549A17C1D2A059"
+
+		// privKey, _ := hex.DecodeString("AD332E8DFE33490AAF35CA2824ECADC0")
+		privKey := []byte("1234567891234567")
+		fakeSense := sense.New15(name, time.Duration(1000*time.Millisecond), interrupt, done, privKey)
 
 		headers := http.Header{}
 		headers.Add("Authorization", "Basic "+basicAuth(name, "foo"))
+		headers.Add("X-Hello-Sense-Id", name)
 		// u := url.URL{Scheme: "wss", Host: *addr, Path: "/echo"}
-		u := url.URL{Scheme: "ws", Host: *addr, Path: "/echo"}
+		u := url.URL{Scheme: "ws", Host: *addr, Path: "/protobuf"}
 		log.Printf("connecting to %s\n", u.String())
 
 		err := fakeSense.Connect(u, headers)

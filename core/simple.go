@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+var upgrader = websocket.Upgrader{} // use default options
+
 type SimpleWsHandler struct {
 	server *SimpleHelloServer
 }
@@ -25,39 +27,56 @@ func NewSimpleWsHandler(server *SimpleHelloServer) *SimpleWsHandler {
 }
 
 func (h *SimpleWsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	sense, err := extractBasicAuth(r, checkCreds)
-	if err != nil {
-		log.Println("Bad auth")
-		http.Error(w, "authorization failed", http.StatusUnauthorized)
+	// sense, err := extractBasicAuth(r, checkCreds)
+	// if err != nil {
+	// 	log.Println("Bad auth")
+	// 	http.Error(w, "authorization failed", http.StatusUnauthorized)
+	// 	return
+	// }
+
+	sense := r.Header.Get("X-Hello-Sense-Id")
+	fmt.Printf("sense_id=%s ip_address=%s\n", sense, r.RemoteAddr)
+	if sense == "" {
+		http.Error(w, "Missing header with Sense ID", 400)
 		return
 	}
-	conn, err := websocket.Upgrade(w, r, w.Header(), 1024, 1024)
+
+	key, err := h.server.keystore.Get(sense)
 	if err != nil {
-		http.Error(w, "Could not open websocket connection", http.StatusBadRequest)
+		log.Println("Couldn't connect to keystore for Sense", sense, err)
+		http.Error(w, "Server error", 500)
+		return
 	}
 
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println(err)
+		// http.Error(w, "Could not open websocket connection", http.StatusBadRequest)
+		return
+	}
 	senseConn := &SenseConn{
 		SenseId:               sense,
 		Conn:                  conn,
-		TopFirmwareVersion:    "top",                      // get from headers
-		MiddleFirmwareVersion: "middle",                   // get from headers
-		PrivKey:               []byte("1234567891234567"), // get from keystore
+		TopFirmwareVersion:    "top",    // get from headers
+		MiddleFirmwareVersion: "middle", // get from headers
+		PrivKey:               key,
 	}
 	c := h.server.register(sense)
 	go h.server.Spin(senseConn, c)
 }
 
 type SimpleHelloServer struct {
+	sync.Mutex
+	pairs    map[string]chan *sense.MessageParts
 	bridge   *Bridge
 	done     chan bool
 	pool     *redis.Pool
 	topic    string
-	pairs    map[string]chan *sense.MessageParts
 	messages chan *sense.MessageParts
-	sync.Mutex
+	keystore sense.KeyStore
 }
 
-func NewSimpleHelloServer(endpoint, topic string, pool *redis.Pool, done chan bool, messages chan *sense.MessageParts) *SimpleHelloServer {
+func NewSimpleHelloServer(endpoint, topic string, pool *redis.Pool, done chan bool, messages chan *sense.MessageParts, ks sense.KeyStore) *SimpleHelloServer {
 	return &SimpleHelloServer{
 		bridge:   NewBridge(endpoint),
 		done:     done,
@@ -65,6 +84,7 @@ func NewSimpleHelloServer(endpoint, topic string, pool *redis.Pool, done chan bo
 		topic:    topic,
 		messages: messages,
 		pairs:    make(map[string]chan *sense.MessageParts),
+		keystore: ks,
 	}
 }
 
@@ -132,54 +152,56 @@ func dispatch(bridge *Bridge, message *sense.MessageParts, s *SenseConn) ([]byte
 }
 
 func (h *SimpleHelloServer) Spin(s *SenseConn, sub chan *sense.MessageParts) {
-	auth := sense.NewAuth(s.PrivKey)
+	if s.Conn == nil {
+		fmt.Println("Can't spin ws thread, conn is nil:", s.SenseId)
+		return
+	}
+
+	auth := sense.NewAuth(s.PrivKey, s.SenseId)
 
 	i := 0
 	defer s.Conn.Close()
 	self := make(chan []byte, 0)
 
 	go write(s, sub, self)
-
 	for {
 		_, content, err := s.Conn.ReadMessage()
 		if err != nil {
 			log.Println("Error reading.", err)
 			break
 		}
+
 		mp, err := auth.Parse(content)
 		if err != nil {
+			log.Println(s.SenseId, err)
 			break
 		}
+
+		// prepare ack message
+		ack := &haneda.Ack{}
+		ack.MessageId = proto.Uint64(mp.Header.GetId())
+		ack.Status = haneda.Ack_SUCCESS.Enum()
 
 		outbox := make([]*sense.MessageParts, 0)
 		resp, err := dispatch(h.bridge, mp, s)
 		if err != nil {
+			// Override status since bridge responded with error
+			ack.Status = haneda.Ack_CLIENT_REQUEST_ERROR.Enum()
+			fmt.Println(mp.Header.GetId(), "Ack_CLIENT_REQUEST_ERROR")
 			fmt.Println(err)
-			switch mp.Header.GetType() {
-			case haneda.Preamble_BATCHED_PERIODIC_DATA:
-				// we want to fail if we can't persist periodic data
-				break
-			default:
-				log.Println("ignoring error", mp.Header.GetType())
-			}
-		} else {
-
-			// send ack
-			ack := &haneda.Ack{}
-			ack.MessageId = proto.Uint64(mp.Header.GetId())
-
-			body, _ := proto.Marshal(ack)
-
-			header := &haneda.Preamble{}
-			header.Type = haneda.Preamble_ACK.Enum()
-
-			out := &sense.MessageParts{
-				Header: header,
-				Body:   body,
-			}
-
-			outbox = append(outbox, out)
 		}
+
+		body, _ := proto.Marshal(ack)
+
+		header := &haneda.Preamble{}
+		header.Type = haneda.Preamble_ACK.Enum()
+
+		out := &sense.MessageParts{
+			Header: header,
+			Body:   body,
+		}
+
+		outbox = append(outbox, out)
 
 		switch mp.Header.GetType() {
 		case haneda.Preamble_BATCHED_PERIODIC_DATA:
@@ -187,16 +209,13 @@ func (h *SimpleHelloServer) Spin(s *SenseConn, sub chan *sense.MessageParts) {
 			syncHeader.Type = haneda.Preamble_SYNC_RESPONSE.Enum()
 			syncHeader.Id = proto.Uint64(uint64(time.Now().UnixNano()))
 
-			syncResp := &api.SyncResponse{}
-			syncResp.RingTimeAck = proto.String("From proxy")
+			// syncResp := &api.SyncResponse{}
+			// syncResp.RingTimeAck = proto.String("From proxy")
 
-			syncBody, _ := proto.Marshal(syncResp)
-			if len(resp) > 48 {
-				syncBody = resp[48:]
-			}
+			// syncBody, _ := proto.Marshal(syncResp)
 			out2 := &sense.MessageParts{
 				Header: syncHeader,
-				Body:   syncBody,
+				Body:   resp,
 			}
 			outbox = append(outbox, out2)
 		default:
@@ -215,7 +234,7 @@ func (h *SimpleHelloServer) Spin(s *SenseConn, sub chan *sense.MessageParts) {
 		i++
 	}
 	h.remove(s.SenseId)
-	log.Println("Processed:", i)
+	log.Println(s.SenseId, "Processed:", i)
 }
 
 // Listen blocks and wait for messages to be published on the redis channel
