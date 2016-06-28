@@ -38,6 +38,14 @@ func (h *SimpleWsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Missing header with Sense ID", 400)
 		return
 	}
+
+	key, err := h.server.keystore.Get(sense)
+	if err != nil {
+		log.Println("Couldn't connect to keystore for Sense", sense, err)
+		http.Error(w, "Server error", 500)
+		return
+	}
+
 	conn, err := websocket.Upgrade(w, r, w.Header(), 1024, 1024)
 	if err != nil {
 		http.Error(w, "Could not open websocket connection", http.StatusBadRequest)
@@ -45,25 +53,26 @@ func (h *SimpleWsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	senseConn := &SenseConn{
 		SenseId:               sense,
 		Conn:                  conn,
-		TopFirmwareVersion:    "top",                      // get from headers
-		MiddleFirmwareVersion: "middle",                   // get from headers
-		PrivKey:               []byte("1234567891234567"), // get from keystore
+		TopFirmwareVersion:    "top",    // get from headers
+		MiddleFirmwareVersion: "middle", // get from headers
+		PrivKey:               key,      // get from keystore
 	}
 	c := h.server.register(sense)
 	go h.server.Spin(senseConn, c)
 }
 
 type SimpleHelloServer struct {
+	sync.Mutex
+	pairs    map[string]chan *sense.MessageParts
 	bridge   *Bridge
 	done     chan bool
 	pool     *redis.Pool
 	topic    string
-	pairs    map[string]chan *sense.MessageParts
 	messages chan *sense.MessageParts
-	sync.Mutex
+	keystore sense.KeyStore
 }
 
-func NewSimpleHelloServer(endpoint, topic string, pool *redis.Pool, done chan bool, messages chan *sense.MessageParts) *SimpleHelloServer {
+func NewSimpleHelloServer(endpoint, topic string, pool *redis.Pool, done chan bool, messages chan *sense.MessageParts, ks sense.KeyStore) *SimpleHelloServer {
 	return &SimpleHelloServer{
 		bridge:   NewBridge(endpoint),
 		done:     done,
@@ -71,6 +80,7 @@ func NewSimpleHelloServer(endpoint, topic string, pool *redis.Pool, done chan bo
 		topic:    topic,
 		messages: messages,
 		pairs:    make(map[string]chan *sense.MessageParts),
+		keystore: ks,
 	}
 }
 

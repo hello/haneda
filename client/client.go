@@ -42,6 +42,7 @@ func main() {
 
 	for i := 0; i < 1; i++ {
 		name := fmt.Sprintf("Sense%d", i)
+		name = "XXXXXXXXXXXXXXXX"
 		fakeSense := sense.New15(name, time.Duration(1000*time.Millisecond), interrupt, done)
 
 		headers := http.Header{}
