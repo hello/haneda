@@ -1,2 +1,2 @@
-server/build
-server/*.local.conf
+_build/
+*.local.conf
