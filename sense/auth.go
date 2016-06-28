@@ -9,22 +9,36 @@ import (
 	"fmt"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/hello/haneda/haneda"
+	"log"
 )
 
-func CheckMAC(message, messageMAC, key []byte) bool {
+func CheckMAC(message, messageMAC, key []byte, sensedId string) bool {
 	mac := hmac.New(sha1.New, key)
 	mac.Write(message)
 	expectedMAC := mac.Sum(nil)
-	return hmac.Equal(messageMAC, expectedMAC)
+
+	match := hmac.Equal(messageMAC, expectedMAC)
+	if !match {
+		log_message := fmt.Sprintf(
+			"body_hex=%X key=%X expected_mac=%X message_mac=%X",
+			message,
+			key[8:],
+			expectedMAC,
+			messageMAC)
+		log.Println(log_message)
+	}
+	return match
 }
 
 type SenseAuth struct {
-	key []byte
+	key     []byte
+	senseId string
 }
 
-func NewAuth(key []byte) *SenseAuth {
+func NewAuth(key []byte, senseId string) *SenseAuth {
 	return &SenseAuth{
-		key: key,
+		key:     key,
+		senseId: senseId,
 	}
 }
 
@@ -32,7 +46,7 @@ func (s *SenseAuth) Parse(content []byte) (*MessageParts, error) {
 
 	bbuf := bytes.NewReader(content)
 	var headerLen uint32
-	err := binary.Read(bbuf, binary.LittleEndian, &headerLen)
+	err := binary.Read(bbuf, binary.BigEndian, &headerLen)
 	if err != nil {
 		fmt.Println(err)
 		return nil, err
@@ -40,20 +54,20 @@ func (s *SenseAuth) Parse(content []byte) (*MessageParts, error) {
 
 	header := make([]byte, headerLen)
 	n, err := bbuf.Read(header)
-
 	if uint32(n) != headerLen {
 		return nil, errors.New("header Len don't match")
 	}
 	var bodyLen uint32
-	err = binary.Read(bbuf, binary.LittleEndian, &bodyLen)
+	err = binary.Read(bbuf, binary.BigEndian, &bodyLen)
 	if err != nil {
 		return nil, err
 	}
 
 	body := make([]byte, bodyLen)
 	n, err = bbuf.Read(body)
-
 	if uint32(n) != bodyLen {
+		msg := fmt.Sprintf("error=body-len-dont-match announced_len=%d read_len=%d", bodyLen, n)
+		log.Println(msg)
 		return nil, errors.New("body Len don't match")
 	}
 
@@ -73,12 +87,11 @@ func (s *SenseAuth) Parse(content []byte) (*MessageParts, error) {
 		Sig:    sig,
 	}
 
-	match := CheckMAC(m.Body, m.Sig, s.key)
+	match := CheckMAC(m.Body, m.Sig, s.key, s.senseId)
+
 	if !match {
-		fmt.Println("don't match!!!")
-		fmt.Printf("%v\n", m.Body)
-		fmt.Printf("%x\n", m.Sig)
-		return nil, errors.New("sig don't match")
+		msg := fmt.Sprintf("sense_id=%s error=sig-dont-match", s.senseId)
+		return nil, errors.New(msg)
 	}
 
 	return m, nil
@@ -92,7 +105,7 @@ func (s *SenseAuth) Sign(mp *MessageParts) ([]byte, error) {
 	headerBytes, _ := proto.Marshal(mp.Header)
 
 	headerLen := uint32(len(headerBytes))
-	err := binary.Write(bbuf, binary.LittleEndian, headerLen)
+	err := binary.Write(bbuf, binary.BigEndian, headerLen)
 	if err != nil {
 		fmt.Println(err)
 		return empty, err
@@ -105,7 +118,7 @@ func (s *SenseAuth) Sign(mp *MessageParts) ([]byte, error) {
 	}
 
 	bodyLen := uint32(len(mp.Body))
-	err = binary.Write(bbuf, binary.LittleEndian, bodyLen)
+	err = binary.Write(bbuf, binary.BigEndian, bodyLen)
 	if err != nil {
 		return empty, err
 	}

@@ -148,7 +148,7 @@ func dispatch(bridge *Bridge, message *sense.MessageParts, s *SenseConn) ([]byte
 }
 
 func (h *SimpleHelloServer) Spin(s *SenseConn, sub chan *sense.MessageParts) {
-	auth := sense.NewAuth(s.PrivKey)
+	auth := sense.NewAuth(s.PrivKey, s.SenseId)
 
 	i := 0
 	defer s.Conn.Close()
@@ -158,12 +158,14 @@ func (h *SimpleHelloServer) Spin(s *SenseConn, sub chan *sense.MessageParts) {
 
 	for {
 		_, content, err := s.Conn.ReadMessage()
+		fmt.Println("content", content)
 		if err != nil {
 			log.Println("Error reading.", err)
 			break
 		}
 		mp, err := auth.Parse(content)
 		if err != nil {
+			log.Println(s.SenseId, err)
 			break
 		}
 
@@ -224,7 +226,7 @@ func (h *SimpleHelloServer) Spin(s *SenseConn, sub chan *sense.MessageParts) {
 		i++
 	}
 	h.remove(s.SenseId)
-	log.Println("Processed:", i)
+	log.Println(s.SenseId, "Processed:", i)
 }
 
 // Listen blocks and wait for messages to be published on the redis channel

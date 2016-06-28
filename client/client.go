@@ -8,7 +8,7 @@ package main
 
 import (
 	"encoding/base64"
-	"encoding/hex"
+	// "encoding/hex"
 	"flag"
 	"fmt"
 	"github.com/hello/haneda/sense"
@@ -31,7 +31,7 @@ func displayName(s sense.Client) {
 
 // var addr = flag.String("addr", "ws-dev.hello.is", "http service address")
 
-var addr = flag.String("addr", "localhost:8082", "http service address")
+var addr = flag.String("addr", "0.0.0.0:8082", "http service address")
 
 func main() {
 	flag.Parse()
@@ -43,10 +43,11 @@ func main() {
 
 	for i := 0; i < 1; i++ {
 		name := fmt.Sprintf("Sense%d", i)
-		// name = "XXXXXXXXXXXXXXXX"
-		name = "5A549A17C1D2A059"
+		name = "XXXXXXXXXXXXXXXX"
+		// name = "5A549A17C1D2A059"
 
-		privKey, _ := hex.DecodeString("AD332E8DFE33490AAF35CA2824ECADC0")
+		// privKey, _ := hex.DecodeString("AD332E8DFE33490AAF35CA2824ECADC0")
+		privKey := []byte("1234567891234567")
 		fakeSense := sense.New15(name, time.Duration(1000*time.Millisecond), interrupt, done, privKey)
 
 		headers := http.Header{}
