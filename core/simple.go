@@ -35,7 +35,7 @@ func (h *SimpleWsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// }
 
 	sense := r.Header.Get("X-Hello-Sense-Id")
-	fmt.Printf("sense_id=%s ip_address=%s\n", sense, r.RemoteAddr)
+	log.Println(fmt.Sprintf("sense_id=%s ip_address=%s\n", sense, r.RemoteAddr))
 	if sense == "" {
 		http.Error(w, "Missing header with Sense ID", 400)
 		return
@@ -50,8 +50,7 @@ func (h *SimpleWsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println(err)
-		// http.Error(w, "Could not open websocket connection", http.StatusBadRequest)
+		log.Println("here", err)
 		return
 	}
 	senseConn := &SenseConn{
@@ -68,7 +67,7 @@ func (h *SimpleWsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 type SimpleHelloServer struct {
 	sync.Mutex
 	pairs    map[string]chan *sense.MessageParts
-	bridge   *Bridge
+	bridge   Bridge
 	done     chan bool
 	pool     *redis.Pool
 	topic    string
@@ -76,9 +75,9 @@ type SimpleHelloServer struct {
 	keystore sense.KeyStore
 }
 
-func NewSimpleHelloServer(endpoint, topic string, pool *redis.Pool, done chan bool, messages chan *sense.MessageParts, ks sense.KeyStore) *SimpleHelloServer {
+func NewSimpleHelloServer(bridge Bridge, topic string, pool *redis.Pool, done chan bool, messages chan *sense.MessageParts, ks sense.KeyStore) *SimpleHelloServer {
 	return &SimpleHelloServer{
-		bridge:   NewBridge(endpoint),
+		bridge:   bridge,
 		done:     done,
 		pool:     pool,
 		topic:    topic,
@@ -86,6 +85,13 @@ func NewSimpleHelloServer(endpoint, topic string, pool *redis.Pool, done chan bo
 		pairs:    make(map[string]chan *sense.MessageParts),
 		keystore: ks,
 	}
+}
+
+func (h *SimpleHelloServer) IsConnected(senseId string) bool {
+	h.Lock()
+	defer h.Unlock()
+	_, found := h.pairs[senseId]
+	return found
 }
 
 func (h *SimpleHelloServer) Start() {
@@ -133,8 +139,8 @@ outer:
 	log.Println("Writing thread stopped for sense", s.SenseId)
 }
 
-func dispatch(bridge *Bridge, message *sense.MessageParts, s *SenseConn) ([]byte, error) {
-	bridge.Route(message)
+func dispatch(bridge Bridge, message *sense.MessageParts, s *SenseConn) ([]byte, error) {
+	// bridge.Route(message)
 	empty := make([]byte, 0)
 	switch message.Header.GetType() {
 	case haneda.Preamble_SENSE_LOG:

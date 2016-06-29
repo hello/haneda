@@ -48,7 +48,7 @@ func main() {
 
 		// privKey, _ := hex.DecodeString("AD332E8DFE33490AAF35CA2824ECADC0")
 		privKey := []byte("1234567891234567")
-		fakeSense := sense.New15(name, time.Duration(1000*time.Millisecond), interrupt, done, privKey)
+		fakeSense := sense.New15(name, interrupt, done, privKey)
 
 		headers := http.Header{}
 		headers.Add("Authorization", "Basic "+basicAuth(name, "foo"))
@@ -57,7 +57,7 @@ func main() {
 		u := url.URL{Scheme: "ws", Host: *addr, Path: "/protobuf"}
 		log.Printf("connecting to %s\n", u.String())
 
-		err := fakeSense.Connect(u, headers)
+		err := fakeSense.Connect(&u, headers)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -65,7 +65,7 @@ func main() {
 		displayName(fakeSense)
 
 		go fakeSense.Receive()
-		go fakeSense.Send()
+		go fakeSense.Send(time.Duration(1000 * time.Millisecond))
 	}
 	<-done
 	log.Println("Done exiting")

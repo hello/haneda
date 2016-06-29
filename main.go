@@ -97,7 +97,8 @@ func main() {
 	}
 
 	ks := sense.NewDynamoDBKeyStore("dev_key_store", config)
-	simple := core.NewSimpleHelloServer(*proxyEndpoint, *pubSubKey, redisPool, done, messages, ks)
+	bridge := core.NewHttpBridge(*proxyEndpoint)
+	simple := core.NewSimpleHelloServer(bridge, *pubSubKey, redisPool, done, messages, ks)
 	go simple.Start()
 	go webserver(*pubSubKey, redisPool, messages)
 

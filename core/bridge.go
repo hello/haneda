@@ -12,27 +12,40 @@ import (
 	"net/http"
 )
 
-type Bridge struct {
+type Bridge interface {
+	PeriodicData(message *api.BatchedPeriodicData, s *SenseConn) ([]byte, error)
+	Logs(message *api.SenseLog, s *SenseConn) error
+}
+
+type HttpBridge struct {
 	client   *http.Client
 	endpoint string
 	routes   map[haneda.PreamblePbType]string
 }
 
-func NewBridge(endpoint string) *Bridge {
+func NewHttpBridge(endpoint string) Bridge {
 	client := http.DefaultClient
 	// configure with timeouts
 
 	routes := make(map[haneda.PreamblePbType]string)
 	routes[haneda.Preamble_BATCHED_PERIODIC_DATA] = "/in/sense/batch"
 	routes[haneda.Preamble_SENSE_LOG] = "/logs"
-	return &Bridge{
+	return HttpBridge{
 		endpoint: endpoint,
 		client:   client,
 		routes:   routes,
 	}
 }
 
-func (b *Bridge) Route(mp *sense.MessageParts) error {
+func NewHttpBridgeWithClient(endpoint string, client *http.Client) Bridge {
+	return HttpBridge{
+		endpoint: endpoint,
+		client:   client,
+		routes:   make(map[haneda.PreamblePbType]string),
+	}
+}
+
+func (b *HttpBridge) Route(mp *sense.MessageParts) error {
 	route, found := b.routes[mp.Header.GetType()]
 	if !found {
 		log.Println("not found", mp.Header.GetType())
@@ -50,9 +63,12 @@ func headers(req *http.Request, s *SenseConn) *http.Request {
 	return req
 }
 
-func (b *Bridge) Logs(message *api.SenseLog, s *SenseConn) error {
+func (b HttpBridge) Logs(message *api.SenseLog, s *SenseConn) error {
 	log.Println("sending log message to:", b.endpoint)
-	content, _ := proto.Marshal(message)
+	content, err := proto.Marshal(message)
+	if err != nil {
+		return err
+	}
 
 	signed, err := sign(content, s.PrivKey)
 	if err != nil {
@@ -76,7 +92,7 @@ func (b *Bridge) Logs(message *api.SenseLog, s *SenseConn) error {
 
 }
 
-func (b *Bridge) PeriodicData(message *api.BatchedPeriodicData, s *SenseConn) ([]byte, error) {
+func (b HttpBridge) PeriodicData(message *api.BatchedPeriodicData, s *SenseConn) ([]byte, error) {
 	log.Println("sending periodic data to:", b.endpoint)
 	content, _ := proto.Marshal(message)
 
