@@ -11,6 +11,9 @@ It is generated from these files:
 	morpheus_ble.proto
 	sync_response.proto
 	audio_control.proto
+	file_manifest.proto
+	filetransfer.proto
+	state.proto
 
 It has these top-level messages:
 	SenseLog
@@ -26,6 +29,10 @@ It has these top-level messages:
 	BatchedPillSettings
 	AudioClassifierMessage
 	AudioControl
+	FileManifest
+	FileMessage
+	AudioState
+	SenseState
 */
 package api
 

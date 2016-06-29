@@ -8,6 +8,10 @@ import (
 	"strings"
 )
 
+var (
+	ErrBadHeader = errors.New("Bad Headers")
+)
+
 func checkCreds(username, password string) bool {
 	if password == "foo" {
 		return true
@@ -31,7 +35,7 @@ func extractBasicAuth(r *http.Request, f AuthenticateFunc) (string, error) {
 		auth := strings.SplitN(r.Header["Authorization"][0], " ", 2)
 
 		if len(auth) != 2 || auth[0] != "Basic" {
-			return "", errors.New("Bad headers")
+			return "", ErrBadHeader
 		}
 
 		payload, _ := base64.StdEncoding.DecodeString(auth[1])
@@ -39,11 +43,11 @@ func extractBasicAuth(r *http.Request, f AuthenticateFunc) (string, error) {
 
 		if len(pair) != 2 || !f(pair[0], pair[1]) {
 
-			return "", errors.New("Bad headers")
+			return "", ErrBadHeader
 		}
 		return pair[0], nil
 	}
-	return "", errors.New("not found")
+	return "", ErrBadHeader
 }
 
 func basicAuth(auth string) (string, string) {

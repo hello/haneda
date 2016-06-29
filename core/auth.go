@@ -6,6 +6,13 @@ import (
 	"crypto/cipher"
 	"crypto/sha1"
 	"errors"
+	"log"
+)
+
+var (
+	ErrInvalidKey = errors.New("invalid key")
+	ErrTooShort   = errors.New("too short")
+	ErrDontMatch  = errors.New("don't match")
 )
 
 func sign(message []byte, key []byte) ([]byte, error) {
@@ -25,7 +32,8 @@ func sign(message []byte, key []byte) ([]byte, error) {
 	// key[0] = 0
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		panic(err)
+		log.Println(err)
+		return []byte{}, ErrInvalidKey
 	}
 
 	ciphertext := make([]byte, len(padded_sha))
@@ -39,7 +47,8 @@ func sign(message []byte, key []byte) ([]byte, error) {
 
 func verify(body []byte, key []byte) error {
 	if len(body) <= 48 {
-		return errors.New("too short")
+		log.Printf("action=verify body_len=%d error=too-short\n", len(body))
+		return ErrTooShort
 	}
 	IV_LENGTH := 16
 	SIG_LENGTH := 32
@@ -61,7 +70,7 @@ func verify(body []byte, key []byte) error {
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		panic(err)
+		return ErrInvalidKey
 	}
 
 	ciphertext := make([]byte, len(padded_sha))
@@ -71,7 +80,7 @@ func verify(body []byte, key []byte) error {
 
 	for i, c := range sha_buf {
 		if c != ciphertext[i] {
-			return errors.New("DO NOT MATCH")
+			return ErrDontMatch
 		}
 	}
 

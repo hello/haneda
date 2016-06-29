@@ -11,21 +11,23 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 )
 
 type Client interface {
 	Id() string
-	Connect(u url.URL, h http.Header) error
+	Connect(u *url.URL, h http.Header) error
 	Disconnect() error
-	Send()
+	Send(t time.Duration)
 	Receive()
+	Write(message []byte)
 }
 
 type Sense15 struct {
 	conn      *websocket.Conn
-	sleep     time.Duration
 	interrupt chan os.Signal
 	done      chan bool
 	name      string
@@ -39,7 +41,8 @@ func (s *Sense15) Id() string {
 	return s.name
 }
 
-func (s *Sense15) Connect(u url.URL, headers http.Header) error {
+func (s *Sense15) Connect(u *url.URL, headers http.Header) error {
+	headers.Add("X-Hello-Sense-Id", s.name)
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), headers)
 	if err != nil {
 		return err
@@ -48,7 +51,7 @@ func (s *Sense15) Connect(u url.URL, headers http.Header) error {
 	return nil
 }
 
-func (s *Sense15) write(message []byte) {
+func (s *Sense15) Write(message []byte) {
 	rand.Seed(time.Now().UnixNano())
 	n := rand.Int31n(1000)
 	time.Sleep(time.Duration(n) * time.Millisecond)
@@ -74,7 +77,7 @@ func (s *Sense15) periodic(messageId uint64) *MessageParts {
 
 	body, pbErr := proto.Marshal(batched)
 	if pbErr != nil {
-		log.Println(pbErr)
+		log.Println("pbErr", pbErr)
 		s.done <- true
 	}
 
@@ -103,8 +106,8 @@ func (s *Sense15) genLogs(messageId uint64, logs []string) *MessageParts {
 	return mp
 }
 
-func (s *Sense15) Send() {
-	ticker := time.NewTicker(s.sleep)
+func (s *Sense15) Send(sleep time.Duration) {
+	ticker := time.NewTicker(sleep)
 	defer ticker.Stop()
 	i := 0
 	msgId := uint64(1)
@@ -126,7 +129,7 @@ func (s *Sense15) Send() {
 				log.Println("duplicate:", msgId)
 				s.done <- true
 			}
-			s.write(env)
+			s.Write(env)
 			log.Println("<--", mp.Header.GetType(), msgId)
 			i++
 			msgId++
@@ -140,7 +143,7 @@ func (s *Sense15) Send() {
 					s.done <- true
 				}
 
-				s.write(env)
+				s.Write(env)
 				duplicate := s.store.Save(msgId)
 				if duplicate != nil {
 					log.Println("duplicate:", msgId)
@@ -172,6 +175,7 @@ func (s *Sense15) Send() {
 }
 
 func (s *Sense15) Disconnect() error {
+	signal.Notify(s.interrupt, syscall.SIGTERM)
 	log.Println("Disconnecting")
 	return s.conn.Close()
 }
@@ -220,10 +224,9 @@ func (s *Sense15) Receive() {
 	log.Println("Done receiving")
 }
 
-func New15(name string, sleep time.Duration, interrupt chan os.Signal, done chan bool, privKey []byte) *Sense15 {
+func New15(name string, interrupt chan os.Signal, done chan bool, privKey []byte) *Sense15 {
 	store := NewStore()
 	return &Sense15{
-		sleep:     sleep,
 		interrupt: interrupt,
 		name:      name,
 		done:      done,
