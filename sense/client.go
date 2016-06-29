@@ -69,7 +69,7 @@ func (s *Sense15) periodic(messageId uint64) *MessageParts {
 
 	batched := &api.BatchedPeriodicData{}
 	periodic := &api.PeriodicData{}
-	periodic.Temperature = proto.Int32(27)
+	periodic.Temperature = proto.Int32(3500)
 
 	batched.DeviceId = &s.name
 	batched.FirmwareVersion = proto.Int32(888)
@@ -188,6 +188,7 @@ func (s *Sense15) Receive() {
 			break
 		}
 
+		log.Println("len:", len(message))
 		mp, parseErr := s.auth.Parse(message)
 		if parseErr != nil {
 			log.Println("parseErr", parseErr)
@@ -211,7 +212,8 @@ func (s *Sense15) Receive() {
 				log.Println(err)
 				continue
 			}
-			log.Println("-->", mp.Header.GetType(), syncResp.GetRingTimeAck())
+			// log.Println("-->", mp.Header.GetType(), syncResp.GetRingTimeAck())
+			log.Println("-->", mp.Header.GetType(), syncResp.GetRoomConditions().Enum())
 		default:
 			log.Println("-->", mp.Header.GetType())
 
