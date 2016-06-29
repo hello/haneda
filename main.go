@@ -10,7 +10,6 @@ import (
 	"github.com/hello/haneda/sense"
 	config "github.com/stvp/go-toml-config"
 	"log"
-
 	"net/http"
 )
 
