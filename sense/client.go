@@ -19,7 +19,7 @@ import (
 
 type Client interface {
 	Id() string
-	Connect(u url.URL, h http.Header) error
+	Connect(u *url.URL, h http.Header) error
 	Disconnect() error
 	Send(t time.Duration)
 	Receive()
