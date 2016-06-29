@@ -119,5 +119,6 @@ func (b HttpBridge) PeriodicData(message *api.BatchedPeriodicData, s *SenseConn)
 
 	defer resp.Body.Close()
 	data, err := ioutil.ReadAll(resp.Body)
+	log.Println("len(data):", len(data))
 	return data[48:], err
 }

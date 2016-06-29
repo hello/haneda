@@ -209,23 +209,26 @@ func (h *SimpleHelloServer) Spin(s *SenseConn, sub chan *sense.MessageParts) {
 
 		outbox = append(outbox, out)
 
-		switch mp.Header.GetType() {
-		case haneda.Preamble_BATCHED_PERIODIC_DATA:
-			syncHeader := &haneda.Preamble{}
-			syncHeader.Type = haneda.Preamble_SYNC_RESPONSE.Enum()
-			syncHeader.Id = proto.Uint64(uint64(time.Now().UnixNano()))
+		// response from server might be happy
+		if len(resp) > 0 {
+			switch mp.Header.GetType() {
+			case haneda.Preamble_BATCHED_PERIODIC_DATA:
+				syncHeader := &haneda.Preamble{}
+				syncHeader.Type = haneda.Preamble_SYNC_RESPONSE.Enum()
+				syncHeader.Id = proto.Uint64(uint64(time.Now().UnixNano()))
 
-			// syncResp := &api.SyncResponse{}
-			// syncResp.RingTimeAck = proto.String("From proxy")
+				// syncResp := &api.SyncResponse{}
+				// syncResp.RingTimeAck = proto.String("From proxy")
 
-			// syncBody, _ := proto.Marshal(syncResp)
-			out2 := &sense.MessageParts{
-				Header: syncHeader,
-				Body:   resp,
+				// syncBody, _ := proto.Marshal(syncResp)
+				out2 := &sense.MessageParts{
+					Header: syncHeader,
+					Body:   resp,
+				}
+				outbox = append(outbox, out2)
+			default:
+				log.Println("No response needed")
 			}
-			outbox = append(outbox, out2)
-		default:
-			log.Println("No response needed")
 		}
 
 	outer:
