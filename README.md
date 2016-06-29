@@ -20,5 +20,10 @@ Out of band messages will be published through redis, and dispatched to the give
 # How to run
 
 ```
-go run $GOPATH/src/github.com/hello/haneda/main.go -c config-file-here.conf
+go get github.com/golang/protobuf/proto
+
+cd $GOPATH/src/github.com/hello/
+git clone git@github.com:hello/haneda.git
+cd haneda
+go run main.go -c config-file-here.conf
 ```
