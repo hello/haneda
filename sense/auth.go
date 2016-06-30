@@ -38,10 +38,18 @@ func CheckMAC(message, messageMAC, key []byte, sensedId string) bool {
 
 type SenseAuth struct {
 	key     []byte
-	senseId string
+	senseId SenseId
 }
 
-func NewAuth(key []byte, senseId string) *SenseAuth {
+type MessageParser interface {
+	Parse(content []byte) (*MessageParts, error)
+}
+
+type MessageSigner interface {
+	Sign(mp *MessageParts) ([]byte, error)
+}
+
+func NewAuth(key []byte, senseId SenseId) *SenseAuth {
 	return &SenseAuth{
 		key:     key,
 		senseId: senseId,
@@ -93,7 +101,7 @@ func (s *SenseAuth) Parse(content []byte) (*MessageParts, error) {
 		Sig:    sig,
 	}
 
-	match := CheckMAC(m.Body, m.Sig, s.key, s.senseId)
+	match := CheckMAC(m.Body, m.Sig, s.key, string(s.senseId))
 
 	if !match {
 		msg := fmt.Sprintf("sense_id=%s error=sig-dont-match", s.senseId)

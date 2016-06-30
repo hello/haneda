@@ -3,7 +3,6 @@ package core
 import (
 	"encoding/base64"
 	"errors"
-	"github.com/gorilla/websocket"
 	"net/http"
 	"strings"
 )
@@ -18,16 +17,6 @@ func checkCreds(username, password string) bool {
 	}
 	return false
 }
-
-type SenseConn struct {
-	TopFirmwareVersion    string
-	MiddleFirmwareVersion string
-	SenseId               string
-	Conn                  *websocket.Conn
-	PrivKey               []byte
-}
-
-type AuthenticateFunc func(username, password string) bool
 
 func extractBasicAuth(r *http.Request, f AuthenticateFunc) (string, error) {
 	if len(r.Header["Authorization"]) > 0 {

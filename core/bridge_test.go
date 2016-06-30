@@ -54,10 +54,9 @@ func TestBridgeLogs(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	client.Transport = newMockTransport(200)
 	bridge := NewHttpBridgeWithClient("http://example.com/", client)
-	conn := &SenseConn{PrivKey: []byte("1234567891234567")}
 
 	logMessage := &api.SenseLog{}
-	err := bridge.Logs(logMessage, conn)
+	err := bridge.Logs(logMessage, []byte("1234567891234567"))
 	if err == nil {
 		t.Errorf("%s", err)
 		t.FailNow()
@@ -65,7 +64,7 @@ func TestBridgeLogs(t *testing.T) {
 
 	client.Transport = newMockTransport(200)
 
-	err = bridge.Logs(logMessage, conn)
+	err = bridge.Logs(logMessage, []byte("1234567891234567"))
 	if err == nil {
 		t.Errorf("%s", err)
 		t.FailNow()
@@ -75,10 +74,9 @@ func TestBridgeLogs(t *testing.T) {
 func TestBridgeLogsBadKey(t *testing.T) {
 	client.Transport = newMockTransport(200)
 	bridge := NewHttpBridgeWithClient("http://example.com/", client)
-	conn := &SenseConn{PrivKey: []byte("bad key")}
 
 	logMessage := &api.SenseLog{}
-	err := bridge.Logs(logMessage, conn)
+	err := bridge.Logs(logMessage, []byte("bad key"))
 	if err == nil {
 		t.Errorf("%s", err)
 		t.FailNow()

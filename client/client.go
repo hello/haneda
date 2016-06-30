@@ -48,8 +48,14 @@ func main() {
 
 		// privKey, _ := hex.DecodeString("AD332E8DFE33490AAF35CA2824ECADC0")
 		privKey := []byte("1234567891234567")
-		fakeSense := sense.New15(name, interrupt, done, privKey)
-
+		fakeSense := &sense.Sense15{
+			Name:      sense.SenseId(name),
+			Interrupt: interrupt,
+			Done:      done,
+			PrivKey:   privKey,
+		}
+		// fakeSense := sense.New15(name, interrupt, done, privKey)
+		fakeSense = sense.NewDefaultSenseOneFive(fakeSense)
 		headers := http.Header{}
 		headers.Add("Authorization", "Basic "+basicAuth(name, "foo"))
 		headers.Add("X-Hello-Sense-Id", name)

@@ -49,20 +49,25 @@ func (b *NoopBridge) check(path string) int {
 	return val
 }
 
-func (b *NoopBridge) PeriodicData(message *api.BatchedPeriodicData, s *core.SenseConn) ([]byte, error) {
+func (b *NoopBridge) PeriodicData(message *api.BatchedPeriodicData, privKey []byte) ([]byte, error) {
 	return []byte{}, nil
 }
 
-func (b *NoopBridge) Logs(message *api.SenseLog, s *core.SenseConn) error {
+func (b *NoopBridge) Logs(message *api.SenseLog, privKey []byte) error {
 	return nil
 }
 
+var (
+	senseId = sense.SenseId("name")
+	ks      = &FakeKeyStore{
+		senseId: string(senseId),
+	}
+)
+
 func TestConnectToWebSocketServer(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
-	senseId := "name"
 	done := make(chan bool, 0)
 	messages := make(chan *sense.MessageParts, 0)
-	ks := &FakeKeyStore{senseId: senseId}
 
 	bridge := &NoopBridge{}
 	simple := core.NewSimpleHelloServer(bridge, "example", nil, done, messages, ks)
@@ -76,16 +81,13 @@ func TestConnectToWebSocketServer(t *testing.T) {
 	signal.Notify(interrupt, os.Interrupt)
 
 	client := sense.New15(senseId, interrupt, done, []byte("1234"))
+
 	err := client.Connect(wsurl, http.Header{})
 	if err != nil {
 		t.Errorf("%v", err)
 		t.FailNow()
 	}
 
-	if !simple.IsConnected("name") {
-		t.Errorf("%s not connected", "name")
-		t.FailNow()
-	}
 	err = client.Disconnect()
 	if err != nil {
 		t.Errorf("Error disconnecting: %v", err)
@@ -93,23 +95,17 @@ func TestConnectToWebSocketServer(t *testing.T) {
 	}
 
 	time.Sleep(5 * time.Millisecond)
-	if simple.IsConnected("name") {
-		t.Errorf("%s still connected but should not", "name")
-		t.FailNow()
-	}
 
 	if bridge.check("logs") != 0 {
 		t.Errorf("%s", "Should not have called path")
 	}
-
+	simple.Shutdown()
 }
 
 func TestWrite(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
-	senseId := "name"
 	done := make(chan bool, 0)
 	messages := make(chan *sense.MessageParts, 0)
-	ks := &FakeKeyStore{senseId: senseId}
 
 	simple := core.NewSimpleHelloServer(&NoopBridge{}, "example", nil, done, messages, ks)
 	wsHandler := core.NewSimpleWsHandler(simple)
@@ -138,10 +134,5 @@ func TestWrite(t *testing.T) {
 		t.Errorf("Error disconnecting: %v", err)
 		t.FailNow()
 	}
-
-	time.Sleep(5 * time.Millisecond)
-	if simple.IsConnected("name") {
-		t.Errorf("%s still connected but should not", "name")
-		t.FailNow()
-	}
+	simple.Shutdown()
 }
