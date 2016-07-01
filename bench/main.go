@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"flag"
 	"fmt"
 	proto "github.com/golang/protobuf/proto"
@@ -183,12 +184,14 @@ func main() {
 
 	go bench.Start()
 
+	privKey, _ := hex.DecodeString("AD332E8DFE33490AAF35CA2824ECADC0")
+
 	bc := &BenchClient{
-		auth:  sense.NewAuth([]byte("1234567891234567"), sense.SenseId("whatever")),
+		auth:  sense.NewAuth(privKey, sense.SenseId("whatever")),
 		funcs: []genFunc{syncResp},
 	}
 
-	wsPath := "/bench"
+	wsPath := "/protobuf"
 	http.Handle(wsPath, bench)
 
 	go func() {
