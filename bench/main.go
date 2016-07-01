@@ -26,14 +26,22 @@ var (
 )
 
 type BenchClient struct {
+	auth sense.MessageSigner
 }
 
-func genRandomMessage(i int) (*sense.MessageParts, error) {
+func (b *BenchClient) genRandomMessage(i int) ([]byte, error) {
+	var mp *sense.MessageParts
+	var err error
+
 	if i%2 == 0 {
-		return periodic(uint64(i))
+		mp, err = periodic(uint64(i))
 	} else {
-		return logs(uint64(i))
+		mp, err = logs(uint64(i))
 	}
+	if err != nil {
+		panic(err)
+	}
+	return b.auth.Sign(mp)
 
 }
 
@@ -86,7 +94,7 @@ func periodic(messageId uint64) (*sense.MessageParts, error) {
 	return mp, nil
 }
 
-func (c *BenchClient) Start(endpoint string, in chan *sense.MessageParts, tickDuration time.Duration) {
+func (c *BenchClient) Start(endpoint string, in chan []byte, tickDuration time.Duration) {
 	wc, _, err := websocket.DefaultDialer.Dial(endpoint, http.Header{})
 	if err != nil {
 		fmt.Println(err)
@@ -115,7 +123,7 @@ outer:
 			fmt.Println("Done. interrupting", b)
 			break outer
 		case <-tick.C:
-			m, err := genRandomMessage(i)
+			m, err := c.genRandomMessage(i)
 			i++
 			if err != nil {
 				fmt.Println(err)
@@ -142,15 +150,19 @@ func main() {
 	log.Printf(msg, *proxyEndpoint)
 
 	messages := make(chan *sense.MessageParts, 2)
+	signedMessages := make(chan []byte, 2)
 
 	bench := &core.BenchServer{
-		Messages: messages,
-		Bridge:   &core.NoopBridge{},
+		Messages:       messages,
+		Bridge:         &core.NoopBridge{},
+		SignedMessages: signedMessages,
 	}
 
 	go bench.Start()
 
-	bc := &BenchClient{}
+	bc := &BenchClient{
+		auth: sense.NewAuth([]byte("1234567891234567"), sense.SenseId("whatever")),
+	}
 	wsPath := "/bench"
 	http.Handle(wsPath, bench)
 
@@ -162,20 +174,20 @@ func main() {
 	}()
 	if !*serverOnly {
 		time.Sleep(2 * time.Second)
-		bc.Start("ws://"+*serverExternalHost+wsPath, messages, 100*time.Millisecond)
+		bc.Start("ws://"+*serverExternalHost+wsPath, signedMessages, 100*time.Millisecond)
 	} else {
 		fmt.Println("block forever, server mode")
 		i := 0
 		for {
 			i++
 
-			m, err := genRandomMessage(i)
+			signed, err := bc.genRandomMessage(i)
 			i++
 			if err != nil {
 				fmt.Println(err)
 				break
 			}
-			messages <- m
+			signedMessages <- signed
 			fmt.Println("Generated message ", i)
 		}
 	}

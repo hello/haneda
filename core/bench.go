@@ -8,10 +8,11 @@ import (
 )
 
 type BenchServer struct {
-	Messages chan *sense.MessageParts
-	Key      []byte
-	Bridge   Bridge
-	Remover  ConnectionRemover
+	Messages       chan *sense.MessageParts
+	SignedMessages chan []byte
+	Key            []byte
+	Bridge         Bridge
+	Remover        ConnectionRemover
 }
 
 func (s *BenchServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -31,7 +32,7 @@ func (s *BenchServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		MiddleFirmwareVersion: sense.MiddleFirmwareVersion("middle"), // get from headers
 		PrivKey:               s.Key,
 		out:                   s.Messages,
-		internalMsgs:          make(chan []byte, 0),
+		internalMsgs:          s.SignedMessages,
 		bridge:                s.Bridge,
 		remover:               s.Remover,
 	}
