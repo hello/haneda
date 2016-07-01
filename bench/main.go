@@ -11,6 +11,7 @@ import (
 	"github.com/hello/haneda/sense"
 	config "github.com/stvp/go-toml-config"
 	"log"
+	"math/rand"
 	"net/http"
 	"time"
 )
@@ -26,23 +27,45 @@ var (
 )
 
 type BenchClient struct {
-	auth sense.MessageSigner
+	auth  sense.MessageSigner
+	funcs []genFunc
 }
+
+type genFunc func(msgId uint64) (*sense.MessageParts, error)
 
 func (b *BenchClient) genRandomMessage(i int) ([]byte, error) {
 	var mp *sense.MessageParts
 	var err error
 
-	if i%2 == 0 {
-		mp, err = periodic(uint64(i))
-	} else {
-		mp, err = logs(uint64(i))
-	}
+	r := rand.Int31n(int32(len(b.funcs)))
+
+	f := b.funcs[r]
+	mp, err = f(uint64(i))
+
 	if err != nil {
 		panic(err)
 	}
 	return b.auth.Sign(mp)
+}
 
+func syncResp(messageId uint64) (*sense.MessageParts, error) {
+	syncHeader := &haneda.Preamble{}
+	syncHeader.Type = haneda.Preamble_SYNC_RESPONSE.Enum()
+	syncHeader.Id = proto.Uint64(messageId)
+
+	syncResponse := &api.SyncResponse{}
+	syncResponse.RoomConditions = api.SyncResponse_WARNING.Enum()
+	syncResponse.RingTimeAck = proto.String("hi chris")
+
+	body, _ := proto.Marshal(syncResponse)
+	n := sense.SenseId("bench-client")
+	mp := &sense.MessageParts{
+		Header:  syncHeader,
+		Body:    body,
+		SenseId: n,
+	}
+
+	return mp, nil
 }
 
 func logs(messageId uint64) (*sense.MessageParts, error) {
@@ -161,8 +184,10 @@ func main() {
 	go bench.Start()
 
 	bc := &BenchClient{
-		auth: sense.NewAuth([]byte("1234567891234567"), sense.SenseId("whatever")),
+		auth:  sense.NewAuth([]byte("1234567891234567"), sense.SenseId("whatever")),
+		funcs: []genFunc{syncResp},
 	}
+
 	wsPath := "/bench"
 	http.Handle(wsPath, bench)
 
