@@ -17,6 +17,7 @@ import (
 
 var (
 	configPath = flag.String("c", "server.conf", "Path to config file. Ex: kenko -c /etc/hello/kenko.conf")
+	serverOnly = flag.Bool("server", false, "server=1 enables client")
 )
 
 var (
@@ -159,7 +160,12 @@ func main() {
 			panic("ListenAndServe: " + err.Error())
 		}
 	}()
-
-	time.Sleep(2 * time.Second)
-	bc.Start("ws://"+*serverExternalHost+wsPath, messages, 100*time.Millisecond)
+	if !*serverOnly {
+		time.Sleep(2 * time.Second)
+		bc.Start("ws://"+*serverExternalHost+wsPath, messages, 100*time.Millisecond)
+	} else {
+		fmt.Println("block forever, server mode")
+		for {
+		}
+	}
 }
