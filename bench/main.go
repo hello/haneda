@@ -165,7 +165,18 @@ func main() {
 		bc.Start("ws://"+*serverExternalHost+wsPath, messages, 100*time.Millisecond)
 	} else {
 		fmt.Println("block forever, server mode")
+		i := 0
 		for {
+			i++
+
+			m, err := genRandomMessage(i)
+			i++
+			if err != nil {
+				fmt.Println(err)
+				break
+			}
+			messages <- m
+			fmt.Println("Generated message ", i)
 		}
 	}
 }
