@@ -135,37 +135,31 @@ func dispatch(bridge Bridge, message *sense.MessageParts, s *SenseConn) ([]byte,
 	return empty, nil
 }
 
-func (h *SimpleHelloServer) Send(msg *sense.MessageParts) {
-
-}
-
 // Listen blocks and wait for messages to be published on the redis channel
-func (h *SimpleHelloServer) Listen() {
 
-	// for {
-	// 	// Get a connection from a pool
-	// 	c := h.pool.Get()
-	// 	psc := redis.PubSubConn{c}
+// for {
+// 	// Get a connection from a pool
+// 	c := h.pool.Get()
+// 	psc := redis.PubSubConn{c}
 
-	// 	// Set up subscriptions
-	// 	psc.Subscribe(h.topic)
+// 	// Set up subscriptions
+// 	psc.Subscribe(h.topic)
 
-	// 	// While not a permanent error on the connection.
-	// 	for c.Err() == nil {
-	// 		switch val := psc.Receive().(type) {
-	// 		case redis.Message:
-	// 			parsed, err := parse(val.Data)
-	// 			if err != nil {
-	// 				log.Println("Failed to parse message", err)
-	// 				continue
-	// 			}
-	// 			v.Receive(parsed)
-	// 		case redis.Subscription:
-	// 			fmt.Printf("%s: %s %d\n", val.Channel, val.Kind, val.Count)
-	// 		case error:
-	// 			fmt.Printf("%v", val)
-	// 		}
-	// 	}
-	// 	c.Close()
-	// }
-}
+// 	// While not a permanent error on the connection.
+// 	for c.Err() == nil {
+// 		switch val := psc.Receive().(type) {
+// 		case redis.Message:
+// 			parsed, err := parse(val.Data)
+// 			if err != nil {
+// 				log.Println("Failed to parse message", err)
+// 				continue
+// 			}
+// 			v.Receive(parsed)
+// 		case redis.Subscription:
+// 			fmt.Printf("%s: %s %d\n", val.Channel, val.Kind, val.Count)
+// 		case error:
+// 			fmt.Printf("%v", val)
+// 		}
+// 	}
+// 	c.Close()
+// }

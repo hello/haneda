@@ -31,7 +31,10 @@ func displayName(s sense.Client) {
 
 // var addr = flag.String("addr", "ws-dev.hello.is", "http service address")
 
-var addr = flag.String("addr", "0.0.0.0:8082", "http service address")
+var (
+	addr = flag.String("addr", "0.0.0.0:8082", "http service address")
+	path = flag.String("path", "protobuf", "ws path")
+)
 
 func main() {
 	flag.Parse()
@@ -44,9 +47,7 @@ func main() {
 	for i := 0; i < 1; i++ {
 		name := fmt.Sprintf("Sense%d", i)
 		name = "XXXXXXXXXXXXXXXX"
-		// name = "5A549A17C1D2A059"
 
-		// privKey, _ := hex.DecodeString("AD332E8DFE33490AAF35CA2824ECADC0")
 		privKey := []byte("1234567891234567")
 		fakeSense := &sense.Sense15{
 			Name:      sense.SenseId(name),
@@ -60,7 +61,7 @@ func main() {
 		headers.Add("Authorization", "Basic "+basicAuth(name, "foo"))
 		headers.Add("X-Hello-Sense-Id", name)
 		// u := url.URL{Scheme: "wss", Host: *addr, Path: "/echo"}
-		u := url.URL{Scheme: "ws", Host: *addr, Path: "/protobuf"}
+		u := url.URL{Scheme: "ws", Host: *addr, Path: fmt.Sprintf("/%s", *path)}
 		log.Printf("connecting to %s\n", u.String())
 
 		err := fakeSense.Connect(&u, headers)

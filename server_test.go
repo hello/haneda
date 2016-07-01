@@ -24,39 +24,6 @@ func (k *FakeKeyStore) Get(senseId string) ([]byte, error) {
 	return []byte("1234"), nil
 }
 
-type NoopBridge struct {
-	sync.Mutex
-	calls map[string]int
-}
-
-func (b *NoopBridge) register(path string) {
-	b.Lock()
-	defer b.Unlock()
-	val, found := b.calls[path]
-	if !found {
-		val = 0
-	}
-	b.calls[path] = val + 1
-}
-
-func (b *NoopBridge) check(path string) int {
-	b.Lock()
-	defer b.Unlock()
-	val, found := b.calls[path]
-	if !found {
-		return 0
-	}
-	return val
-}
-
-func (b *NoopBridge) PeriodicData(message *api.BatchedPeriodicData, privKey []byte) ([]byte, error) {
-	return []byte{}, nil
-}
-
-func (b *NoopBridge) Logs(message *api.SenseLog, privKey []byte) error {
-	return nil
-}
-
 var (
 	senseId = sense.SenseId("name")
 	ks      = &FakeKeyStore{

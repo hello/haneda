@@ -29,11 +29,16 @@ func (c *SenseConn) Send(message *sense.MessageParts) {
 }
 
 func (c *SenseConn) write() {
+	fmt.Println("starting write thread")
 outer:
 	for {
 		select {
 		case m := <-c.out:
-			log.Println("Sending Message to:", m.SenseId)
+			log.Printf("Sending %s Message to: %s\n", m.Header.GetType().String(), m.SenseId)
+			if err := c.Conn.WriteMessage(websocket.BinaryMessage, m.Body); err != nil {
+				fmt.Println(err)
+				break outer
+			}
 		case m := <-c.internalMsgs: // assuming already fully assembled messages
 			if err := c.Conn.WriteMessage(websocket.BinaryMessage, m); err != nil {
 				fmt.Println(err)
@@ -120,4 +125,10 @@ func (c *SenseConn) Serve() {
 	}
 	c.remover.Remove(c.SenseId)
 	log.Println(c.SenseId, "Processed:", i)
+}
+
+func (c *SenseConn) Listen(in <-chan *sense.MessageParts) {
+	for msg := range in {
+		c.out <- msg
+	}
 }

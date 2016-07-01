@@ -17,6 +17,17 @@ type Bridge interface {
 	Logs(message *api.SenseLog, privKey []byte) error
 }
 
+type NoopBridge struct {
+}
+
+func (b *NoopBridge) PeriodicData(message *api.BatchedPeriodicData, privKey []byte) ([]byte, error) {
+	return []byte{}, nil
+}
+
+func (b *NoopBridge) Logs(message *api.SenseLog, privKey []byte) error {
+	return nil
+}
+
 type HttpBridge struct {
 	client   *http.Client
 	endpoint string
@@ -56,7 +67,7 @@ func (b *HttpBridge) Route(mp *sense.MessageParts) error {
 }
 
 // func headers(req *http.Request, s *SenseConn) *http.Request {
-// 	req.Header.Add("X-Hello-Sense-Id", s.SenseId.String())
+// 	req.Header.Add("X-Hello-Sense-Id", s.string(senseId))
 // 	req.Header.Add("X-Hello-Sense-MFW", s.MiddleFirmwareVersion)
 // 	req.Header.Add("X-Hello-Sense-TFW", s.TopFirmwareVersion)
 // 	req.Header.Add("Content-Type", "application/x-protobuf")
