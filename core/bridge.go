@@ -13,8 +13,19 @@ import (
 )
 
 type Bridge interface {
-	PeriodicData(message *api.BatchedPeriodicData, s *SenseConn) ([]byte, error)
-	Logs(message *api.SenseLog, s *SenseConn) error
+	PeriodicData(message *api.BatchedPeriodicData, privKey []byte) ([]byte, error)
+	Logs(message *api.SenseLog, privKey []byte) error
+}
+
+type NoopBridge struct {
+}
+
+func (b *NoopBridge) PeriodicData(message *api.BatchedPeriodicData, privKey []byte) ([]byte, error) {
+	return []byte{}, nil
+}
+
+func (b *NoopBridge) Logs(message *api.SenseLog, privKey []byte) error {
+	return nil
 }
 
 type HttpBridge struct {
@@ -55,29 +66,29 @@ func (b *HttpBridge) Route(mp *sense.MessageParts) error {
 	return nil
 }
 
-func headers(req *http.Request, s *SenseConn) *http.Request {
-	req.Header.Add("X-Hello-Sense-Id", s.SenseId)
-	req.Header.Add("X-Hello-Sense-MFW", s.MiddleFirmwareVersion)
-	req.Header.Add("X-Hello-Sense-TFW", s.TopFirmwareVersion)
-	req.Header.Add("Content-Type", "application/x-protobuf")
-	return req
-}
+// func headers(req *http.Request, s *SenseConn) *http.Request {
+// 	req.Header.Add("X-Hello-Sense-Id", s.string(senseId))
+// 	req.Header.Add("X-Hello-Sense-MFW", s.MiddleFirmwareVersion)
+// 	req.Header.Add("X-Hello-Sense-TFW", s.TopFirmwareVersion)
+// 	req.Header.Add("Content-Type", "application/x-protobuf")
+// 	return req
+// }
 
-func (b HttpBridge) Logs(message *api.SenseLog, s *SenseConn) error {
+func (b HttpBridge) Logs(message *api.SenseLog, privKey []byte) error {
 	log.Println("sending log message to:", b.endpoint)
 	content, err := proto.Marshal(message)
 	if err != nil {
 		return err
 	}
 
-	signed, err := sign(content, s.PrivKey)
+	signed, err := sign(content, privKey)
 	if err != nil {
 		return err
 	}
 
 	body := bytes.NewReader(signed)
 	req, _ := http.NewRequest("POST", b.endpoint+"/logs", body)
-	req = headers(req, s)
+	// req = headers(req, s)
 	resp, err := b.client.Do(req)
 
 	if err != nil {
@@ -92,20 +103,20 @@ func (b HttpBridge) Logs(message *api.SenseLog, s *SenseConn) error {
 
 }
 
-func (b HttpBridge) PeriodicData(message *api.BatchedPeriodicData, s *SenseConn) ([]byte, error) {
+func (b HttpBridge) PeriodicData(message *api.BatchedPeriodicData, privKey []byte) ([]byte, error) {
 	log.Println("sending periodic data to:", b.endpoint)
 	content, _ := proto.Marshal(message)
 
 	empty := make([]byte, 0)
 
-	signed, err := sign(content, s.PrivKey)
+	signed, err := sign(content, privKey)
 	if err != nil {
 		return empty, err
 	}
 
 	body := bytes.NewReader(signed)
 	req, _ := http.NewRequest("POST", b.endpoint+"/in/sense/batch", body)
-	req = headers(req, s)
+	// req = headers(req, s)
 	resp, err := b.client.Do(req)
 
 	if err != nil {

@@ -10,7 +10,9 @@ import (
 	"github.com/hello/haneda/sense"
 	config "github.com/stvp/go-toml-config"
 	"log"
+	"net"
 	"net/http"
+	"time"
 )
 
 var (
@@ -26,6 +28,7 @@ var (
 	awsKey             = config.String("aws.key", "")
 	awsSecret          = config.String("aws.secret", "")
 	awsRegion          = config.String("aws.region", "")
+	keyStoreTable      = config.String("aws.keystore_table", "")
 )
 
 func proxy(w http.ResponseWriter, r *http.Request) {
@@ -95,15 +98,27 @@ func main() {
 		config.Credentials = credentials.NewStaticCredentials(*awsKey, *awsSecret, "")
 	}
 
-	ks := sense.NewDynamoDBKeyStore("dev_key_store", config)
-	bridge := core.NewHttpBridge(*proxyEndpoint)
+	ks := sense.NewDynamoDBKeyStore(*keyStoreTable, config)
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			Dial: (&net.Dialer{
+				Timeout:   5 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).Dial,
+			TLSHandshakeTimeout:   2 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+	}
+	bridge := core.NewHttpBridgeWithClient(*proxyEndpoint, client)
 	simple := core.NewSimpleHelloServer(bridge, *pubSubKey, redisPool, done, messages, ks)
 	go simple.Start()
 	go webserver(*pubSubKey, redisPool, messages)
 
-	wsHandler := core.NewSimpleWsHandler(simple)
 	http.HandleFunc("/health", HealthHandler)
-	http.Handle("/protobuf", wsHandler)
+	http.Handle("/protobuf", simple)
+
 	err := http.ListenAndServe(*serverExternalHost, nil)
 	if err != nil {
 		panic("ListenAndServe: " + err.Error())

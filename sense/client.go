@@ -28,21 +28,21 @@ type Client interface {
 
 type Sense15 struct {
 	conn      *websocket.Conn
-	interrupt chan os.Signal
-	done      chan bool
-	name      string
-	logs      chan string
-	privKey   []byte
-	auth      *SenseAuth
-	store     *Store
+	Interrupt chan os.Signal
+	Done      chan bool
+	Name      SenseId
+	Logs      chan string
+	PrivKey   []byte
+	Auth      *SenseAuth
+	Store     *Store
 }
 
 func (s *Sense15) Id() string {
-	return s.name
+	return string(s.Name)
 }
 
 func (s *Sense15) Connect(u *url.URL, headers http.Header) error {
-	headers.Add("X-Hello-Sense-Id", s.name)
+	headers.Add("X-Hello-Sense-Id", string(s.Name))
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), headers)
 	if err != nil {
 		return err
@@ -58,7 +58,7 @@ func (s *Sense15) Write(message []byte) {
 	err := s.conn.WriteMessage(websocket.BinaryMessage, message)
 	if err != nil {
 		log.Println("write:", err)
-		s.done <- true
+		s.Done <- true
 	}
 }
 
@@ -71,14 +71,15 @@ func (s *Sense15) periodic(messageId uint64) *MessageParts {
 	periodic := &api.PeriodicData{}
 	periodic.Temperature = proto.Int32(3500)
 
-	batched.DeviceId = &s.name
+	n := string(s.Name)
+	batched.DeviceId = &n
 	batched.FirmwareVersion = proto.Int32(888)
 	batched.Data = append(batched.Data, periodic)
 
 	body, pbErr := proto.Marshal(batched)
 	if pbErr != nil {
 		log.Println("pbErr", pbErr)
-		s.done <- true
+		s.Done <- true
 	}
 
 	mp := &MessageParts{
@@ -96,7 +97,7 @@ func (s *Sense15) genLogs(messageId uint64, logs []string) *MessageParts {
 	sLog := &api.SenseLog{}
 	combined := strings.Join(logs, "\n")
 	sLog.Text = &combined
-	sLog.DeviceId = proto.String(s.name)
+	sLog.DeviceId = proto.String(string(s.Name))
 	body, _ := proto.Marshal(sLog)
 
 	mp := &MessageParts{
@@ -118,36 +119,36 @@ func (s *Sense15) Send(sleep time.Duration) {
 		case <-ticker.C:
 
 			mp := s.periodic(msgId)
-			env, err := s.auth.Sign(mp)
+			env, err := s.Auth.Sign(mp)
 			if err != nil {
 				log.Println(err)
-				s.done <- true
+				s.Done <- true
 			}
 
-			duplicate := s.store.Save(msgId)
+			duplicate := s.Store.Save(msgId)
 			if duplicate != nil {
 				log.Println("duplicate:", msgId)
-				s.done <- true
+				s.Done <- true
 			}
 			s.Write(env)
 			log.Println("<--", mp.Header.GetType(), msgId)
 			i++
 			msgId++
-		case logMessage := <-s.logs:
+		case logMessage := <-s.Logs:
 			if len(logs) == 10 {
 				mp := s.genLogs(msgId, logs)
 
-				env, err := s.auth.Sign(mp)
+				env, err := s.Auth.Sign(mp)
 				if err != nil {
 					log.Println(err)
-					s.done <- true
+					s.Done <- true
 				}
 
 				s.Write(env)
-				duplicate := s.store.Save(msgId)
+				duplicate := s.Store.Save(msgId)
 				if duplicate != nil {
 					log.Println("duplicate:", msgId)
-					s.done <- true
+					s.Done <- true
 				}
 				log.Println("<--", mp.Header.GetType(), msgId)
 				i++
@@ -158,7 +159,7 @@ func (s *Sense15) Send(sleep time.Duration) {
 				logs = append(logs, logMessage)
 			}
 
-		case <-s.interrupt:
+		case <-s.Interrupt:
 			log.Println("interrupt")
 			// To cleanly close a connection, a client should send a close
 			// frame and wait for the server to close the connection.
@@ -169,13 +170,13 @@ func (s *Sense15) Send(sleep time.Duration) {
 
 			}
 			s.Disconnect()
-			s.done <- true
+			s.Done <- true
 		}
 	}
 }
 
 func (s *Sense15) Disconnect() error {
-	signal.Notify(s.interrupt, syscall.SIGTERM)
+	signal.Notify(s.Interrupt, syscall.SIGTERM)
 	log.Println("Disconnecting")
 	return s.conn.Close()
 }
@@ -189,7 +190,7 @@ func (s *Sense15) Receive() {
 		}
 
 		log.Println("len:", len(message))
-		mp, parseErr := s.auth.Parse(message)
+		mp, parseErr := s.Auth.Parse(message)
 		if parseErr != nil {
 			log.Println("parseErr", parseErr)
 			continue
@@ -203,7 +204,7 @@ func (s *Sense15) Receive() {
 				log.Println(err, ackMessage.GetMessageId(), ackMessage.GetStatus())
 				continue
 			}
-			s.store.Expire(ackMessage.GetMessageId())
+			s.Store.Expire(ackMessage.GetMessageId())
 			log.Println("-->", mp.Header.GetType(), ackMessage.GetMessageId())
 		case haneda.Preamble_SYNC_RESPONSE:
 			syncResp := &api.SyncResponse{}
@@ -219,22 +220,39 @@ func (s *Sense15) Receive() {
 
 		}
 
-		lm := fmt.Sprintf("%s: %d\n", s.name, mp.Header.GetId())
-		s.logs <- lm
+		lm := fmt.Sprintf("%s: %d\n", s.Name, mp.Header.GetId())
+		s.Logs <- lm
 	}
 
 	log.Println("Done receiving")
 }
 
-func New15(name string, interrupt chan os.Signal, done chan bool, privKey []byte) *Sense15 {
+func NewDefaultSenseOneFive(sense *Sense15) *Sense15 {
+	if len(sense.PrivKey) == 0 {
+		sense.PrivKey = []byte{'d', 'e', 'f', 'a', 'u', 'l', 't', ' ', 'k', 'e', 'y'}
+	}
+	if sense.Logs == nil {
+		sense.Logs = make(chan string, 16)
+	}
+	if sense.Store == nil {
+		sense.Store = NewStore()
+	}
+
+	if sense.Auth == nil {
+		sense.Auth = &SenseAuth{key: sense.PrivKey}
+	}
+	return sense
+}
+
+func New15(name SenseId, interrupt chan os.Signal, done chan bool, privKey []byte) *Sense15 {
 	store := NewStore()
 	return &Sense15{
-		interrupt: interrupt,
-		name:      name,
-		done:      done,
-		logs:      make(chan string, 16),
-		privKey:   privKey,
-		auth:      &SenseAuth{key: privKey},
-		store:     store,
+		Interrupt: interrupt,
+		Name:      name,
+		Done:      done,
+		Logs:      make(chan string, 16),
+		PrivKey:   privKey,
+		Auth:      &SenseAuth{key: privKey},
+		Store:     store,
 	}
 }
