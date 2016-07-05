@@ -139,7 +139,7 @@ func main() {
 	}()
 	if !*serverOnly {
 		time.Sleep(2 * time.Second)
-		bc.Start("ws://"+*serverExternalHost+wsPath, signedMessages, 100*time.Millisecond)
+		bc.Start("ws://"+*serverExternalHost+wsPath, signedMessages, 1*time.Second)
 	} else {
 		fmt.Println("block forever, server mode")
 		i := 0
