@@ -33,7 +33,7 @@ type Sense15 struct {
 	Name      SenseId
 	Logs      chan string
 	PrivKey   []byte
-	Auth      *SenseAuth
+	Auth      *SenseAuthHmacSha1
 	Store     *Store
 }
 

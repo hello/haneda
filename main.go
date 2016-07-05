@@ -73,6 +73,7 @@ func main() {
 		log.Printf("[haneda-server] can't find configuration: %s\n", *configPath)
 		log.Fatal(err)
 	}
+
 	log.Printf("[haneda-server] Configuration loaded from: %s\n", *configPath)
 	msg := "[haneda-server] Configured to proxy requests to: %s.\n"
 	log.Printf(msg, *proxyEndpoint)
@@ -111,7 +112,6 @@ func main() {
 			ExpectContinueTimeout: 1 * time.Second,
 		},
 	}
-	// bridge := core.NewHttpBridgeWithClient(*proxyEndpoint, client)
 
 	forwarder := core.NewHttpForwarder(*proxyEndpoint, client)
 

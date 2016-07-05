@@ -45,6 +45,8 @@ func (h *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	senseId := sense.SenseId(connectedSense)
 	c := h.adder.Add(senseId)
 
+	auth := sense.NewAuth(key, senseId)
+
 	senseConn := &SenseConn{
 		SenseId:               senseId,
 		Conn:                  conn,
@@ -55,6 +57,8 @@ func (h *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		internalMsgs:          make(chan []byte, 0),
 		bridge:                h.bridge,
 		remover:               h.remover,
+		signer:                auth,
+		parser:                auth,
 	}
 
 	go senseConn.Serve()

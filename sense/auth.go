@@ -18,25 +18,7 @@ var (
 	SigDontMatch       = errors.New("signatures don't match")
 )
 
-func CheckMAC(message, messageMAC, key []byte, sensedId string) bool {
-	mac := hmac.New(sha1.New, key)
-	mac.Write(message)
-	expectedMAC := mac.Sum(nil)
-
-	match := hmac.Equal(messageMAC, expectedMAC)
-	if !match {
-		log_message := fmt.Sprintf(
-			"body_hex=%X key=%X expected_mac=%X message_mac=%X",
-			message,
-			key[8:],
-			expectedMAC,
-			messageMAC)
-		log.Println(log_message)
-	}
-	return match
-}
-
-type SenseAuth struct {
+type SenseAuthHmacSha1 struct {
 	key     []byte
 	senseId SenseId
 }
@@ -49,14 +31,18 @@ type MessageSigner interface {
 	Sign(mp *MessageParts) ([]byte, error)
 }
 
-func NewAuth(key []byte, senseId SenseId) *SenseAuth {
+type Matcher interface {
+	Match(message, messageMAC, key []byte) bool
+}
+
+func NewAuth(key []byte, senseId SenseId) *SenseAuthHmacSha1 {
 	return &SenseAuth{
 		key:     key,
 		senseId: senseId,
 	}
 }
 
-func (s *SenseAuth) Parse(content []byte) (*MessageParts, error) {
+func (s *SenseAuthHmacSha1) Parse(content []byte) (*MessageParts, error) {
 
 	bbuf := bytes.NewReader(content)
 	var headerLen uint32
@@ -101,7 +87,7 @@ func (s *SenseAuth) Parse(content []byte) (*MessageParts, error) {
 		Sig:    sig,
 	}
 
-	match := CheckMAC(m.Body, m.Sig, s.key, string(s.senseId))
+	match := s.Match(m.Body, m.Sig, s.key)
 
 	if !match {
 		msg := fmt.Sprintf("sense_id=%s error=sig-dont-match", s.senseId)
@@ -112,7 +98,7 @@ func (s *SenseAuth) Parse(content []byte) (*MessageParts, error) {
 	return m, nil
 }
 
-func (s *SenseAuth) Sign(mp *MessageParts) ([]byte, error) {
+func (s *SenseAuthHmacSha1) Sign(mp *MessageParts) ([]byte, error) {
 	empty := make([]byte, 0)
 	content := make([]byte, 0)
 	bbuf := bytes.NewBuffer(content)
@@ -151,4 +137,18 @@ func (s *SenseAuth) Sign(mp *MessageParts) ([]byte, error) {
 
 	bbuf.Write(sig)
 	return bbuf.Bytes(), nil
+}
+
+func (s *SenseAuthHmacSha1) Match(message, messageMAC, key []byte) bool {
+	mac := hmac.New(sha1.New, key)
+	mac.Write(message)
+	expectedMAC := mac.Sum(nil)
+
+	match := hmac.Equal(messageMAC, expectedMAC)
+	if !match {
+		log_message := "body_hex=%X key=%X expected_mac=%X message_mac=%X sense_id=%s"
+
+		log.Println(fmt.Sprintf(log_message, message, key[8:], expectedMAC, messageMAC, s.senseId))
+	}
+	return match
 }

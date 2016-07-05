@@ -18,8 +18,8 @@ type SenseConn struct {
 	PrivKey               []byte
 	out                   chan *sense.MessageParts
 	internalMsgs          chan []byte
-	signer                *sense.MessageSigner
-	parser                *sense.MessageParser
+	signer                sense.MessageSigner
+	parser                sense.MessageParser
 	bridge                Bridge
 	remover               ConnectionRemover
 }
@@ -50,8 +50,6 @@ outer:
 }
 
 func (c *SenseConn) Serve() {
-	auth := sense.NewAuth(c.PrivKey, c.SenseId)
-
 	i := 0
 	defer c.Conn.Close()
 
@@ -63,7 +61,7 @@ func (c *SenseConn) Serve() {
 			break
 		}
 
-		mp, err := auth.Parse(content)
+		mp, err := c.parser.Parse(content)
 		if err != nil {
 			log.Println(c.SenseId, err)
 			break
@@ -115,7 +113,7 @@ func (c *SenseConn) Serve() {
 		}
 
 		for _, mp := range outbox {
-			serialized, err := auth.Sign(mp)
+			serialized, err := c.signer.Sign(mp)
 			if err != nil {
 				log.Println(err)
 				break
