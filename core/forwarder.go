@@ -82,7 +82,7 @@ func (f *GenericForwarder) Do(content, privKey []byte, path string, expectedHttp
 	}
 
 	if resp.StatusCode != expectedHttpStatusCode {
-		log.Printf("want=%d got=%d endpoint=%", expectedHttpStatusCode, resp.StatusCode, f.endpoint)
+		log.Printf("want=%d got=%d endpoint=%s\n", expectedHttpStatusCode, resp.StatusCode, f.endpoint)
 		return []byte{}, ErrUnexpectedStatusCode
 	}
 	defer resp.Body.Close()

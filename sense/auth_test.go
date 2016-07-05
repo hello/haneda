@@ -137,7 +137,7 @@ func TestParseMalformedMessages(t *testing.T) {
 		auth := NewSenseAuthHmacSha1(test.key, "test")
 		_, err := auth.Parse(test.body)
 		if err == nil {
-			t.Fatalf("test name=%s should have failed.")
+			t.Fatalf("test name=%s should have failed.", test.name)
 		}
 
 		if test.expectedErr != err {
@@ -227,10 +227,7 @@ func TestSignParse(t *testing.T) {
 	syncResp.RingTimeAck = proto.String(ack)
 	body, _ := proto.Marshal(syncResp)
 
-	mp := &MessageParts{
-		Header: header,
-		Body:   body,
-	}
+	mp := &MessageParts{Header: header, Body: body}
 
 	signed, err := auth.Sign(mp)
 	if err != nil {
@@ -253,6 +250,6 @@ func TestSignParse(t *testing.T) {
 	}
 
 	if syncResp.GetRingTimeAck() != rSyncResp.GetRingTimeAck() {
-		t.Fatalf("got=%d want=%d", rSyncResp.GetRingTimeAck(), syncResp.GetRingTimeAck())
+		t.Fatalf("got=%s want=%s", rSyncResp.GetRingTimeAck(), syncResp.GetRingTimeAck())
 	}
 }
