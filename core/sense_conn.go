@@ -75,6 +75,7 @@ func (c *SenseConn) Serve() {
 		ack.Status = haneda.Ack_SUCCESS.Enum()
 
 		outbox := make([]*sense.MessageParts, 0)
+
 		resp, err := dispatch(c.bridge, mp, c)
 		if err != nil {
 			// Override status since bridge responded with error
@@ -95,7 +96,7 @@ func (c *SenseConn) Serve() {
 
 		outbox = append(outbox, out)
 
-		// response from server might be happy
+		// response from server might be empty
 		if len(resp) > 0 {
 			switch mp.Header.GetType() {
 			case haneda.Preamble_BATCHED_PERIODIC_DATA:

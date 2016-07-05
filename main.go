@@ -111,8 +111,11 @@ func main() {
 			ExpectContinueTimeout: 1 * time.Second,
 		},
 	}
-	bridge := core.NewHttpBridgeWithClient(*proxyEndpoint, client)
-	simple := core.NewSimpleHelloServer(bridge, *pubSubKey, redisPool, done, messages, ks)
+	// bridge := core.NewHttpBridgeWithClient(*proxyEndpoint, client)
+
+	forwarder := core.NewHttpForwarder(*proxyEndpoint, client)
+
+	simple := core.NewSimpleHelloServer(forwarder, *pubSubKey, redisPool, done, messages, ks)
 	go simple.Start()
 	go webserver(*pubSubKey, redisPool, messages)
 

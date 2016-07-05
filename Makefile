@@ -9,9 +9,9 @@ format:
 	@go fmt $(PACKAGES)
 
 test:
-	go test -v ./core/
-	go test -v ./sense/
-	go test -v .
+	go test ./core/
+	go test ./sense/
+	go test .
 
 release: osx linux
 
