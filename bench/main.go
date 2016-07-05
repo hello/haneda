@@ -121,9 +121,11 @@ func main() {
 
 	privKey, _ := hex.DecodeString("AD332E8DFE33490AAF35CA2824ECADC0")
 
+	manifestGenerator := &sense.FileManifestGenerator{}
+
 	bc := &BenchClient{
 		auth:  sense.NewAuth(privKey, sense.SenseId("whatever")),
-		funcs: []genFunc{sense.GenSyncResp, sense.GenMesseji},
+		funcs: []genFunc{sense.GenSyncResp, sense.GenMesseji, manifestGenerator.Generate},
 	}
 
 	wsPath := "/protobuf"

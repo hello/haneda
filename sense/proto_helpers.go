@@ -80,6 +80,47 @@ func GenLogs(messageId uint64) (*MessageParts, error) {
 	return mp, nil
 }
 
+type FileManifestGenerator struct {
+	s3service string
+}
+
+func (f *FileManifestGenerator) Generate(messageId uint64) (*MessageParts, error) {
+	// FileSync.FileManifest.File
+	header := &haneda.Preamble{}
+	header.Type = haneda.Preamble_FILE_MANIFEST.Enum()
+	header.Id = proto.Uint64(messageId)
+
+	fileManifest := &api.FileManifest{}
+
+	fileInfo := fileManifest.GetFileInfo()
+	for i := 0; i < 10; i++ {
+		fileDownload := &api.FileManifest_FileDownload{}
+		fileDownload.Host = proto.String("s3.amazonaws.com")
+		fileDownload.Url = proto.String("hello-audio/sleep-tones-raw/ST001.raw")
+		file := &api.FileManifest_File{}
+		file.DeleteFile = proto.Bool(false)
+		file.UpdateFile = proto.Bool(false)
+		file.DownloadInfo = fileDownload
+
+		fileInfo = append(fileInfo, file)
+	}
+
+	fileManifest.FileInfo = fileInfo
+
+	body, pbErr := proto.Marshal(fileManifest)
+	if pbErr != nil {
+		return nil, pbErr
+	}
+	n := SenseId("bench-client")
+	mp := &MessageParts{
+		Header:  header,
+		Body:    body,
+		SenseId: n,
+	}
+
+	return mp, nil
+}
+
 func GenPeriodic(messageId uint64) (*MessageParts, error) {
 	header := &haneda.Preamble{}
 	header.Type = haneda.Preamble_BATCHED_PERIODIC_DATA.Enum()
