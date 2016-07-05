@@ -100,7 +100,7 @@ func (s *SimpleHelloServer) Start() {
 			if found {
 				c <- m
 			} else {
-				fmt.Println("%s", m.SenseId)
+				fmt.Printf("%s\n", m.SenseId)
 			}
 		}
 	}
