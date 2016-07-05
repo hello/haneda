@@ -10,9 +10,7 @@ import (
 	"github.com/hello/haneda/sense"
 	config "github.com/stvp/go-toml-config"
 	"log"
-	"net"
 	"net/http"
-	"time"
 )
 
 var (
@@ -30,10 +28,6 @@ var (
 	awsRegion          = config.String("aws.region", "")
 	keyStoreTable      = config.String("aws.keystore_table", "")
 )
-
-func proxy(w http.ResponseWriter, r *http.Request) {
-
-}
 
 type PublishHanlder struct {
 	pool  *redis.Pool
@@ -101,19 +95,7 @@ func main() {
 
 	ks := sense.NewDynamoDBKeyStore(*keyStoreTable, config)
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			Dial: (&net.Dialer{
-				Timeout:   5 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).Dial,
-			TLSHandshakeTimeout:   2 * time.Second,
-			ResponseHeaderTimeout: 10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		},
-	}
-
-	forwarder := core.NewHttpForwarder(*proxyEndpoint, client)
+	forwarder := core.NewDefaultHttpForwarder(*proxyEndpoint)
 
 	simple := core.NewSimpleHelloServer(forwarder, *pubSubKey, redisPool, done, messages, ks)
 	go simple.Start()

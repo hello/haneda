@@ -8,7 +8,9 @@ import (
 	"github.com/hello/haneda/haneda"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
+	"time"
 )
 
 const (
@@ -89,6 +91,21 @@ func (f *GenericForwarder) Do(content, privKey []byte, path string, expectedHttp
 		return data[48:], err
 	}
 	return []byte{}, err
+}
+
+func NewDefaultHttpForwarder(endpoint string) *HttpForwarder {
+	client := &http.Client{
+		Transport: &http.Transport{
+			Dial: (&net.Dialer{
+				Timeout:   5 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).Dial,
+			TLSHandshakeTimeout:   2 * time.Second,
+			ResponseHeaderTimeout: 10 * time.Second,
+			ExpectContinueTimeout: 1 * time.Second,
+		},
+	}
+	return NewHttpForwarder(endpoint, client)
 }
 
 func NewHttpForwarder(endpoint string, client *http.Client) *HttpForwarder {

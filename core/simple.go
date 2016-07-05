@@ -14,7 +14,7 @@ import (
 
 var upgrader = websocket.Upgrader{} // use default options
 
-func (h *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// sense, err := extractBasicAuth(r, checkCreds)
 	// if err != nil {
 	// 	log.Println("Bad auth")
@@ -29,7 +29,7 @@ func (h *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	key, err := h.keystore.Get(connectedSense)
+	key, err := s.keystore.Get(connectedSense)
 	if err != nil {
 		log.Println("Couldn't connect to keystore for Sense", connectedSense, err)
 		http.Error(w, "Server error", 500)
@@ -43,9 +43,9 @@ func (h *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	senseId := sense.SenseId(connectedSense)
-	c := h.adder.Add(senseId)
+	c := s.adder.Add(senseId)
 
-	auth := sense.NewAuth(key, senseId)
+	auth := sense.NewSenseAuthHmacSha1(key, senseId)
 
 	senseConn := &SenseConn{
 		SenseId:               senseId,
@@ -55,8 +55,8 @@ func (h *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		PrivKey:               key,
 		out:                   c,
 		internalMsgs:          make(chan []byte, 0),
-		bridge:                h.bridge,
-		remover:               h.remover,
+		bridge:                s.bridge,
+		remover:               s.remover,
 		signer:                auth,
 		parser:                auth,
 	}
@@ -64,19 +64,20 @@ func (h *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	go senseConn.Serve()
 }
 
-func (h *SimpleHelloServer) Shutdown() {
-	h.Lock()
-	defer h.Unlock()
-	h.pairs = make(map[sense.SenseId]chan *sense.MessageParts)
+func (s *SimpleHelloServer) Shutdown() {
+	s.Lock()
+	defer s.Unlock()
+	s.pairs = make(map[sense.SenseId]chan *sense.MessageParts)
 	// h.pool.Close()
-	close(h.done)
-	close(h.messages)
+	close(s.done)
+	close(s.messages)
 }
 
 func NewSimpleHelloServer(bridge Bridge, topic string, pool *redis.Pool, done chan bool, messages chan *sense.MessageParts, ks sense.KeyStore) *SimpleHelloServer {
 	hub := &Hub{
 		removeChan: make(chan sense.SenseId, 2),
 	}
+
 	return &SimpleHelloServer{
 		bridge:   bridge,
 		done:     done,
@@ -90,12 +91,12 @@ func NewSimpleHelloServer(bridge Bridge, topic string, pool *redis.Pool, done ch
 	}
 }
 
-func (h *SimpleHelloServer) Start() {
+func (s *SimpleHelloServer) Start() {
 	log.Println("SimpleHelloServer running")
 	for {
 		select {
-		case m := <-h.messages:
-			c, found := h.pairs[m.SenseId]
+		case m := <-s.messages:
+			c, found := s.pairs[m.SenseId]
 			if found {
 				c <- m
 			} else {
@@ -105,19 +106,19 @@ func (h *SimpleHelloServer) Start() {
 	}
 }
 
-func (h *SimpleHelloServer) Register(senseId sense.SenseId) chan *sense.MessageParts {
-	h.Lock()
-	defer h.Unlock()
+func (s *SimpleHelloServer) Register(senseId sense.SenseId) chan *sense.MessageParts {
+	s.Lock()
+	defer s.Unlock()
 	c := make(chan *sense.MessageParts)
-	h.pairs[senseId] = c
+	s.pairs[senseId] = c
 	log.Println("added", senseId)
 	return c
 }
 
-func (h *SimpleHelloServer) Remove(senseId sense.SenseId) {
-	h.Lock()
-	defer h.Unlock()
-	delete(h.pairs, senseId)
+func (s *SimpleHelloServer) Remove(senseId sense.SenseId) {
+	s.Lock()
+	defer s.Unlock()
+	delete(s.pairs, senseId)
 	log.Println("removed", senseId)
 }
 
