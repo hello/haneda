@@ -1,7 +1,6 @@
 package main
 
 import (
-	"github.com/hello/haneda/api"
 	"github.com/hello/haneda/core"
 	"github.com/hello/haneda/sense"
 	"io/ioutil"
@@ -11,9 +10,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"sync"
 	"testing"
-	"time"
 )
 
 type FakeKeyStore struct {
@@ -36,11 +33,10 @@ func TestConnectToWebSocketServer(t *testing.T) {
 	done := make(chan bool, 0)
 	messages := make(chan *sense.MessageParts, 0)
 
-	bridge := &NoopBridge{}
+	bridge := &core.NoopBridge{}
 	simple := core.NewSimpleHelloServer(bridge, "example", nil, done, messages, ks)
-	wsHandler := core.NewSimpleWsHandler(simple)
 
-	ts := httptest.NewServer(wsHandler)
+	ts := httptest.NewServer(simple)
 	defer ts.Close()
 	wsurl, _ := url.Parse(ts.URL)
 	wsurl.Scheme = "ws"
@@ -60,12 +56,6 @@ func TestConnectToWebSocketServer(t *testing.T) {
 		t.Errorf("Error disconnecting: %v", err)
 		t.FailNow()
 	}
-
-	time.Sleep(5 * time.Millisecond)
-
-	if bridge.check("logs") != 0 {
-		t.Errorf("%s", "Should not have called path")
-	}
 	simple.Shutdown()
 }
 
@@ -74,10 +64,9 @@ func TestWrite(t *testing.T) {
 	done := make(chan bool, 0)
 	messages := make(chan *sense.MessageParts, 0)
 
-	simple := core.NewSimpleHelloServer(&NoopBridge{}, "example", nil, done, messages, ks)
-	wsHandler := core.NewSimpleWsHandler(simple)
+	simple := core.NewSimpleHelloServer(&core.NoopBridge{}, "example", nil, done, messages, ks)
 
-	ts := httptest.NewServer(wsHandler)
+	ts := httptest.NewServer(simple)
 	defer ts.Close()
 	wsurl, _ := url.Parse(ts.URL)
 	wsurl.Scheme = "ws"

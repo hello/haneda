@@ -12,11 +12,6 @@ import (
 	"net/http"
 )
 
-type Bridge interface {
-	PeriodicData(message *api.BatchedPeriodicData, privKey []byte) ([]byte, error)
-	Logs(message *api.SenseLog, privKey []byte) error
-}
-
 type NoopBridge struct {
 }
 

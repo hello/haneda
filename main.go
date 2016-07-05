@@ -10,9 +10,7 @@ import (
 	"github.com/hello/haneda/sense"
 	config "github.com/stvp/go-toml-config"
 	"log"
-	"net"
 	"net/http"
-	"time"
 )
 
 var (
@@ -30,10 +28,6 @@ var (
 	awsRegion          = config.String("aws.region", "")
 	keyStoreTable      = config.String("aws.keystore_table", "")
 )
-
-func proxy(w http.ResponseWriter, r *http.Request) {
-
-}
 
 type PublishHanlder struct {
 	pool  *redis.Pool
@@ -73,6 +67,7 @@ func main() {
 		log.Printf("[haneda-server] can't find configuration: %s\n", *configPath)
 		log.Fatal(err)
 	}
+
 	log.Printf("[haneda-server] Configuration loaded from: %s\n", *configPath)
 	msg := "[haneda-server] Configured to proxy requests to: %s.\n"
 	log.Printf(msg, *proxyEndpoint)
@@ -100,19 +95,9 @@ func main() {
 
 	ks := sense.NewDynamoDBKeyStore(*keyStoreTable, config)
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			Dial: (&net.Dialer{
-				Timeout:   5 * time.Second,
-				KeepAlive: 30 * time.Second,
-			}).Dial,
-			TLSHandshakeTimeout:   2 * time.Second,
-			ResponseHeaderTimeout: 10 * time.Second,
-			ExpectContinueTimeout: 1 * time.Second,
-		},
-	}
-	bridge := core.NewHttpBridgeWithClient(*proxyEndpoint, client)
-	simple := core.NewSimpleHelloServer(bridge, *pubSubKey, redisPool, done, messages, ks)
+	forwarder := core.NewDefaultHttpForwarder(*proxyEndpoint)
+
+	simple := core.NewSimpleHelloServer(forwarder, *pubSubKey, redisPool, done, messages, ks)
 	go simple.Start()
 	go webserver(*pubSubKey, redisPool, messages)
 

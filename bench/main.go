@@ -1,13 +1,11 @@
 package main
 
 import (
+	"encoding/hex"
 	"flag"
 	"fmt"
-	proto "github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
-	"github.com/hello/haneda/api"
 	"github.com/hello/haneda/core"
-	"github.com/hello/haneda/haneda"
 	"github.com/hello/haneda/sense"
 	config "github.com/stvp/go-toml-config"
 	"log"
@@ -48,75 +46,6 @@ func (b *BenchClient) genRandomMessage(i int) ([]byte, error) {
 	return b.auth.Sign(mp)
 }
 
-func syncResp(messageId uint64) (*sense.MessageParts, error) {
-	syncHeader := &haneda.Preamble{}
-	syncHeader.Type = haneda.Preamble_SYNC_RESPONSE.Enum()
-	syncHeader.Id = proto.Uint64(messageId)
-
-	syncResponse := &api.SyncResponse{}
-	syncResponse.RoomConditions = api.SyncResponse_WARNING.Enum()
-	syncResponse.RingTimeAck = proto.String("hi chris")
-
-	body, _ := proto.Marshal(syncResponse)
-	n := sense.SenseId("bench-client")
-	mp := &sense.MessageParts{
-		Header:  syncHeader,
-		Body:    body,
-		SenseId: n,
-	}
-
-	return mp, nil
-}
-
-func logs(messageId uint64) (*sense.MessageParts, error) {
-	pb := &haneda.Preamble{}
-	pb.Type = haneda.Preamble_SENSE_LOG.Enum()
-	pb.Id = proto.Uint64(messageId)
-
-	sLog := &api.SenseLog{}
-	combined := fmt.Sprintf("Log #%d", messageId)
-	sLog.Text = &combined
-	n := sense.SenseId("bench-client")
-	sLog.DeviceId = proto.String(string(n))
-	body, err := proto.Marshal(sLog)
-	if err != nil {
-		return nil, err
-	}
-	mp := &sense.MessageParts{
-		Header:  pb,
-		Body:    body,
-		SenseId: n,
-	}
-	return mp, nil
-}
-
-func periodic(messageId uint64) (*sense.MessageParts, error) {
-	header := &haneda.Preamble{}
-	header.Type = haneda.Preamble_BATCHED_PERIODIC_DATA.Enum()
-	header.Id = proto.Uint64(messageId)
-
-	batched := &api.BatchedPeriodicData{}
-	periodic := &api.PeriodicData{}
-	periodic.Temperature = proto.Int32(3500)
-
-	n := string("bench-client")
-	batched.DeviceId = &n
-	batched.FirmwareVersion = proto.Int32(888)
-	batched.Data = append(batched.Data, periodic)
-
-	body, pbErr := proto.Marshal(batched)
-	if pbErr != nil {
-		return nil, pbErr
-	}
-
-	mp := &sense.MessageParts{
-		Header:  header,
-		Body:    body,
-		SenseId: sense.SenseId(n),
-	}
-	return mp, nil
-}
-
 func (c *BenchClient) Start(endpoint string, in chan []byte, tickDuration time.Duration) {
 	wc, _, err := websocket.DefaultDialer.Dial(endpoint, http.Header{})
 	if err != nil {
@@ -126,18 +55,25 @@ func (c *BenchClient) Start(endpoint string, in chan []byte, tickDuration time.D
 	done := make(chan bool, 0)
 	go func(c *websocket.Conn, done chan bool) {
 		fmt.Println("starting reading")
+		i := 0
+		totalBytes := 0
 		for {
 			_, content, err := c.ReadMessage()
 			if err != nil {
 				fmt.Println(err)
 				done <- false
 			}
-			fmt.Println("len:", len(content))
+			totalBytes += len(content)
+			if i%100 == 0 {
+				fmt.Println("Iteration:", i)
+				fmt.Println("Total:", totalBytes)
+			}
+			i++
 		}
 	}(wc, done)
 
 	tick := time.NewTicker(tickDuration)
-	timeout := time.NewTimer(10 * time.Second)
+	timeout := time.NewTimer(100 * time.Second)
 	i := 1
 outer:
 	for {
@@ -183,12 +119,16 @@ func main() {
 
 	go bench.Start()
 
+	privKey, _ := hex.DecodeString("AD332E8DFE33490AAF35CA2824ECADC0")
+
+	manifestGenerator := &sense.FileManifestGenerator{}
+
 	bc := &BenchClient{
-		auth:  sense.NewAuth([]byte("1234567891234567"), sense.SenseId("whatever")),
-		funcs: []genFunc{syncResp},
+		auth:  sense.NewAuth(privKey, sense.SenseId("whatever")),
+		funcs: []genFunc{sense.GenSyncResp, sense.GenMesseji, manifestGenerator.Generate},
 	}
 
-	wsPath := "/bench"
+	wsPath := "/protobuf"
 	http.Handle(wsPath, bench)
 
 	go func() {

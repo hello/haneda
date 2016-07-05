@@ -13,32 +13,19 @@ import (
 )
 
 var (
-	HeaderLenDontMatch = errors.New("headers len don't match")
-	BodyLenDontMatch   = errors.New("body len don't match")
-	SigDontMatch       = errors.New("signatures don't match")
+	ErrHeaderLenDontMatch = errors.New("headers len don't match")
+	ErrBodyLenDontMatch   = errors.New("body len don't match")
+	ErrSigDontMatch       = errors.New("signatures don't match")
+	ErrEmptyKey           = errors.New("empty key")
+	ErrEmptyBody          = errors.New("empty body")
+	ErrNil                = errors.New("can't be nil")
+	ErrInvalidProto       = errors.New("invalid proto")
 )
 
-func CheckMAC(message, messageMAC, key []byte, sensedId string) bool {
-	mac := hmac.New(sha1.New, key)
-	mac.Write(message)
-	expectedMAC := mac.Sum(nil)
-
-	match := hmac.Equal(messageMAC, expectedMAC)
-	if !match {
-		log_message := fmt.Sprintf(
-			"body_hex=%X key=%X expected_mac=%X message_mac=%X",
-			message,
-			key[8:],
-			expectedMAC,
-			messageMAC)
-		log.Println(log_message)
-	}
-	return match
-}
-
-type SenseAuth struct {
+type SenseAuthHmacSha1 struct {
 	key     []byte
 	senseId SenseId
+	err     error
 }
 
 type MessageParser interface {
@@ -49,28 +36,31 @@ type MessageSigner interface {
 	Sign(mp *MessageParts) ([]byte, error)
 }
 
-func NewAuth(key []byte, senseId SenseId) *SenseAuth {
-	return &SenseAuth{
+func NewSenseAuthHmacSha1(key []byte, senseId SenseId) *SenseAuthHmacSha1 {
+	return &SenseAuthHmacSha1{
 		key:     key,
 		senseId: senseId,
 	}
 }
 
-func (s *SenseAuth) Parse(content []byte) (*MessageParts, error) {
+func (s *SenseAuthHmacSha1) Err() error {
+	return s.err
+}
 
+func (s *SenseAuthHmacSha1) Parse(content []byte) (*MessageParts, error) {
 	bbuf := bytes.NewReader(content)
 	var headerLen uint32
 	err := binary.Read(bbuf, binary.BigEndian, &headerLen)
 	if err != nil {
-		fmt.Println(err)
 		return nil, err
 	}
 
 	header := make([]byte, headerLen)
 	n, err := bbuf.Read(header)
 	if uint32(n) != headerLen {
-		return nil, HeaderLenDontMatch
+		return nil, ErrHeaderLenDontMatch
 	}
+
 	var bodyLen uint32
 	err = binary.Read(bbuf, binary.BigEndian, &bodyLen)
 	if err != nil {
@@ -82,7 +72,7 @@ func (s *SenseAuth) Parse(content []byte) (*MessageParts, error) {
 	if uint32(n) != bodyLen {
 		msg := fmt.Sprintf("error=body-len-dont-match announced_len=%d read_len=%d", bodyLen, n)
 		log.Println(msg)
-		return nil, BodyLenDontMatch
+		return nil, ErrBodyLenDontMatch
 	}
 
 	sig := make([]byte, 20)
@@ -92,6 +82,7 @@ func (s *SenseAuth) Parse(content []byte) (*MessageParts, error) {
 	protoErr := proto.Unmarshal(header, preamble)
 
 	if protoErr != nil {
+		log.Printf("action=parse-message sense_id=%s error=%s\n", s.senseId, protoErr)
 		return nil, protoErr
 	}
 
@@ -101,20 +92,33 @@ func (s *SenseAuth) Parse(content []byte) (*MessageParts, error) {
 		Sig:    sig,
 	}
 
-	match := CheckMAC(m.Body, m.Sig, s.key, string(s.senseId))
+	match := s.Match(m.Body, m.Sig, s.key)
 
 	if !match {
 		msg := fmt.Sprintf("sense_id=%s error=sig-dont-match", s.senseId)
 		log.Println(msg)
-		return nil, SigDontMatch
+		return nil, ErrSigDontMatch
 	}
 
 	return m, nil
 }
 
-func (s *SenseAuth) Sign(mp *MessageParts) ([]byte, error) {
+func (s *SenseAuthHmacSha1) Sign(mp *MessageParts) ([]byte, error) {
 	empty := make([]byte, 0)
 	content := make([]byte, 0)
+
+	if mp == nil || mp.Header == nil {
+		return empty, ErrNil
+	}
+
+	if len(mp.Body) == 0 {
+		return empty, ErrEmptyBody
+	}
+
+	if len(s.key) == 0 {
+		return empty, ErrEmptyKey
+	}
+
 	bbuf := bytes.NewBuffer(content)
 
 	headerBytes, _ := proto.Marshal(mp.Header)
@@ -132,6 +136,10 @@ func (s *SenseAuth) Sign(mp *MessageParts) ([]byte, error) {
 		return empty, errors.New("could not write full header")
 	}
 
+	if err != nil {
+		return empty, err
+	}
+
 	bodyLen := uint32(len(mp.Body))
 	err = binary.Write(bbuf, binary.BigEndian, bodyLen)
 	if err != nil {
@@ -141,7 +149,7 @@ func (s *SenseAuth) Sign(mp *MessageParts) ([]byte, error) {
 	n, err = bbuf.Write(mp.Body)
 
 	if uint32(n) != bodyLen {
-		return empty, BodyLenDontMatch
+		return empty, ErrBodyLenDontMatch
 	}
 
 	hm := hmac.New(sha1.New, s.key)
@@ -151,4 +159,18 @@ func (s *SenseAuth) Sign(mp *MessageParts) ([]byte, error) {
 
 	bbuf.Write(sig)
 	return bbuf.Bytes(), nil
+}
+
+func (s *SenseAuthHmacSha1) Match(message, messageMAC, key []byte) bool {
+	mac := hmac.New(sha1.New, key)
+	mac.Write(message)
+	expectedMAC := mac.Sum(nil)
+
+	match := hmac.Equal(messageMAC, expectedMAC)
+	if !match {
+		log_message := "body_hex=%X key=%X expected_mac=%X message_mac=%X sense_id=%s"
+
+		log.Println(fmt.Sprintf(log_message, message, key[8:], expectedMAC, messageMAC, s.senseId))
+	}
+	return match
 }

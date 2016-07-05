@@ -33,7 +33,7 @@ type Sense15 struct {
 	Name      SenseId
 	Logs      chan string
 	PrivKey   []byte
-	Auth      *SenseAuth
+	Auth      *SenseAuthHmacSha1
 	Store     *Store
 }
 
@@ -239,7 +239,7 @@ func NewDefaultSenseOneFive(sense *Sense15) *Sense15 {
 	}
 
 	if sense.Auth == nil {
-		sense.Auth = &SenseAuth{key: sense.PrivKey}
+		sense.Auth = &SenseAuthHmacSha1{key: sense.PrivKey}
 	}
 	return sense
 }
@@ -252,7 +252,7 @@ func New15(name SenseId, interrupt chan os.Signal, done chan bool, privKey []byt
 		Done:      done,
 		Logs:      make(chan string, 16),
 		PrivKey:   privKey,
-		Auth:      &SenseAuth{key: privKey},
+		Auth:      &SenseAuthHmacSha1{key: privKey},
 		Store:     store,
 	}
 }
