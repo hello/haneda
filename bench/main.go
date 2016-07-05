@@ -4,12 +4,8 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
-	proto "github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
-	"github.com/hello/haneda/api"
 	"github.com/hello/haneda/core"
-	"github.com/hello/haneda/haneda"
-	"github.com/hello/haneda/messeji"
 	"github.com/hello/haneda/sense"
 	config "github.com/stvp/go-toml-config"
 	"log"
@@ -48,122 +44,6 @@ func (b *BenchClient) genRandomMessage(i int) ([]byte, error) {
 		panic(err)
 	}
 	return b.auth.Sign(mp)
-}
-
-func genMesseji(messageId uint64) (*sense.MessageParts, error) {
-	header := &haneda.Preamble{}
-	header.Type = haneda.Preamble_MESSEJI.Enum()
-	header.Id = proto.Uint64(messageId)
-
-	playAudio := &messeji.PlayAudio{}
-	playAudio.DurationSeconds = proto.Uint32(10)
-	playAudio.FadeInDurationSeconds = proto.Uint32(2)
-	playAudio.FadeOutDurationSeconds = proto.Uint32(2)
-	playAudio.VolumePercent = proto.Uint32(80)
-	playAudio.FilePath = proto.String("/SLPTONES/ST011.RAW")
-
-	msg := &messeji.Message{}
-	msg.SenderId = proto.String("go-bench")
-	msg.Order = proto.Int64(time.Now().UnixNano())
-	msg.Type = messeji.Message_PLAY_AUDIO.Enum()
-	msg.PlayAudio = playAudio
-
-	/*
-			final AudioCommands.PlayAudio.Builder playBuilder = AudioCommands.PlayAudio.newBuilder()
-		                .setFadeInDurationSeconds(fadeInSeconds)
-		                .setFadeOutDurationSeconds(fadeOutSeconds)
-		                .setVolumePercent(volumePercent)
-		                .setTimeoutFadeOutDurationSeconds(timeoutFadeOutSeconds)
-		                .setFilePath(sound.filePath);
-		        if (duration.durationSeconds.isPresent()) {
-		            playBuilder.setDurationSeconds(duration.durationSeconds.get());
-		        }
-		        final Messeji.Message message = Messeji.Message.newBuilder()
-		                .setOrder(order)
-		                .setSenderId(sender.id)
-		                .setType(Messeji.Message.Type.PLAY_AUDIO)
-		                .setPlayAudio(playBuilder.build())
-		                .build();
-	*/
-
-	body, _ := proto.Marshal(msg)
-	n := sense.SenseId("bench-client")
-	mp := &sense.MessageParts{
-		Header:  header,
-		Body:    body,
-		SenseId: n,
-	}
-
-	return mp, nil
-}
-
-func syncResp(messageId uint64) (*sense.MessageParts, error) {
-	syncHeader := &haneda.Preamble{}
-	syncHeader.Type = haneda.Preamble_SYNC_RESPONSE.Enum()
-	syncHeader.Id = proto.Uint64(messageId)
-
-	syncResponse := &api.SyncResponse{}
-	syncResponse.RoomConditions = api.SyncResponse_WARNING.Enum()
-	syncResponse.RingTimeAck = proto.String("hi chris")
-
-	body, _ := proto.Marshal(syncResponse)
-	n := sense.SenseId("bench-client")
-	mp := &sense.MessageParts{
-		Header:  syncHeader,
-		Body:    body,
-		SenseId: n,
-	}
-
-	return mp, nil
-}
-
-func logs(messageId uint64) (*sense.MessageParts, error) {
-	pb := &haneda.Preamble{}
-	pb.Type = haneda.Preamble_SENSE_LOG.Enum()
-	pb.Id = proto.Uint64(messageId)
-
-	sLog := &api.SenseLog{}
-	combined := fmt.Sprintf("Log #%d", messageId)
-	sLog.Text = &combined
-	n := sense.SenseId("bench-client")
-	sLog.DeviceId = proto.String(string(n))
-	body, err := proto.Marshal(sLog)
-	if err != nil {
-		return nil, err
-	}
-	mp := &sense.MessageParts{
-		Header:  pb,
-		Body:    body,
-		SenseId: n,
-	}
-	return mp, nil
-}
-
-func periodic(messageId uint64) (*sense.MessageParts, error) {
-	header := &haneda.Preamble{}
-	header.Type = haneda.Preamble_BATCHED_PERIODIC_DATA.Enum()
-	header.Id = proto.Uint64(messageId)
-
-	batched := &api.BatchedPeriodicData{}
-	periodic := &api.PeriodicData{}
-	periodic.Temperature = proto.Int32(3500)
-
-	n := string("bench-client")
-	batched.DeviceId = &n
-	batched.FirmwareVersion = proto.Int32(888)
-	batched.Data = append(batched.Data, periodic)
-
-	body, pbErr := proto.Marshal(batched)
-	if pbErr != nil {
-		return nil, pbErr
-	}
-
-	mp := &sense.MessageParts{
-		Header:  header,
-		Body:    body,
-		SenseId: sense.SenseId(n),
-	}
-	return mp, nil
 }
 
 func (c *BenchClient) Start(endpoint string, in chan []byte, tickDuration time.Duration) {
@@ -243,7 +123,7 @@ func main() {
 
 	bc := &BenchClient{
 		auth:  sense.NewAuth(privKey, sense.SenseId("whatever")),
-		funcs: []genFunc{syncResp, genMesseji},
+		funcs: []genFunc{sense.GenSyncResp, sense.GenMesseji},
 	}
 
 	wsPath := "/protobuf"
