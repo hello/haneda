@@ -9,6 +9,7 @@ import (
 	"github.com/hello/haneda/api"
 	"github.com/hello/haneda/core"
 	"github.com/hello/haneda/haneda"
+	"github.com/hello/haneda/messeji"
 	"github.com/hello/haneda/sense"
 	config "github.com/stvp/go-toml-config"
 	"log"
@@ -47,6 +48,53 @@ func (b *BenchClient) genRandomMessage(i int) ([]byte, error) {
 		panic(err)
 	}
 	return b.auth.Sign(mp)
+}
+
+func genMesseji(messageId uint64) (*sense.MessageParts, error) {
+	header := &haneda.Preamble{}
+	header.Type = haneda.Preamble_MESSEJI.Enum()
+	header.Id = proto.Uint64(messageId)
+
+	playAudio := &messeji.PlayAudio{}
+	playAudio.DurationSeconds = proto.Uint32(10)
+	playAudio.FadeInDurationSeconds = proto.Uint32(2)
+	playAudio.FadeOutDurationSeconds = proto.Uint32(2)
+	playAudio.VolumePercent = proto.Uint32(80)
+	playAudio.FilePath = proto.String("/SLPTONES/ST011.RAW")
+
+	msg := &messeji.Message{}
+	msg.SenderId = proto.String("go-bench")
+	msg.Order = proto.Int64(time.Now().UnixNano())
+	msg.Type = messeji.Message_PLAY_AUDIO.Enum()
+	msg.PlayAudio = playAudio
+
+	/*
+			final AudioCommands.PlayAudio.Builder playBuilder = AudioCommands.PlayAudio.newBuilder()
+		                .setFadeInDurationSeconds(fadeInSeconds)
+		                .setFadeOutDurationSeconds(fadeOutSeconds)
+		                .setVolumePercent(volumePercent)
+		                .setTimeoutFadeOutDurationSeconds(timeoutFadeOutSeconds)
+		                .setFilePath(sound.filePath);
+		        if (duration.durationSeconds.isPresent()) {
+		            playBuilder.setDurationSeconds(duration.durationSeconds.get());
+		        }
+		        final Messeji.Message message = Messeji.Message.newBuilder()
+		                .setOrder(order)
+		                .setSenderId(sender.id)
+		                .setType(Messeji.Message.Type.PLAY_AUDIO)
+		                .setPlayAudio(playBuilder.build())
+		                .build();
+	*/
+
+	body, _ := proto.Marshal(msg)
+	n := sense.SenseId("bench-client")
+	mp := &sense.MessageParts{
+		Header:  header,
+		Body:    body,
+		SenseId: n,
+	}
+
+	return mp, nil
 }
 
 func syncResp(messageId uint64) (*sense.MessageParts, error) {
@@ -127,18 +175,25 @@ func (c *BenchClient) Start(endpoint string, in chan []byte, tickDuration time.D
 	done := make(chan bool, 0)
 	go func(c *websocket.Conn, done chan bool) {
 		fmt.Println("starting reading")
+		i := 0
+		totalBytes := 0
 		for {
 			_, content, err := c.ReadMessage()
 			if err != nil {
 				fmt.Println(err)
 				done <- false
 			}
-			fmt.Println("len:", len(content))
+			totalBytes += len(content)
+			if i%100 == 0 {
+				fmt.Println("Iteration:", i)
+				fmt.Println("Total:", totalBytes)
+			}
+			i++
 		}
 	}(wc, done)
 
 	tick := time.NewTicker(tickDuration)
-	timeout := time.NewTimer(10 * time.Second)
+	timeout := time.NewTimer(100 * time.Second)
 	i := 1
 outer:
 	for {
@@ -188,7 +243,7 @@ func main() {
 
 	bc := &BenchClient{
 		auth:  sense.NewAuth(privKey, sense.SenseId("whatever")),
-		funcs: []genFunc{syncResp},
+		funcs: []genFunc{syncResp, genMesseji},
 	}
 
 	wsPath := "/protobuf"
