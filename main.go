@@ -83,7 +83,11 @@ func main() {
 	}, 10)
 
 	defer redisPool.Close()
+
+	// done channel is used to stop the server gracefully
 	done := make(chan bool, 0)
+
+	// messages chan is used to push messages outside of the sense connection lifecycle
 	messages := make(chan *sense.MessageParts, 2)
 
 	config := &aws.Config{}
@@ -98,7 +102,10 @@ func main() {
 	forwarder := core.NewDefaultHttpForwarder(*proxyEndpoint)
 
 	simple := core.NewSimpleHelloServer(forwarder, *pubSubKey, redisPool, done, messages, ks)
+
 	go simple.Start()
+
+	// todo: implement messeji http handler API
 	go webserver(*pubSubKey, redisPool, messages)
 
 	http.HandleFunc("/health", HealthHandler)

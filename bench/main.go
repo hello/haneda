@@ -113,7 +113,6 @@ func main() {
 
 	bench := &core.BenchServer{
 		Messages:       messages,
-		Bridge:         &core.NoopBridge{},
 		SignedMessages: signedMessages,
 	}
 
@@ -124,7 +123,7 @@ func main() {
 	manifestGenerator := &sense.FileManifestGenerator{}
 
 	bc := &BenchClient{
-		auth:  sense.NewAuth(privKey, sense.SenseId("whatever")),
+		auth:  sense.NewSenseAuthHmacSha1(privKey, sense.SenseId("whatever")),
 		funcs: []genFunc{sense.GenSyncResp, sense.GenMesseji, manifestGenerator.Generate},
 	}
 

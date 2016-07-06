@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/hello/haneda/api"
 	"github.com/hello/haneda/core"
 	"github.com/hello/haneda/sense"
 	"io/ioutil"
@@ -28,13 +29,23 @@ var (
 	}
 )
 
+type NoopBridge struct {
+}
+
+func (b *NoopBridge) PeriodicData(message *api.BatchedPeriodicData, key []byte) ([]byte, error) {
+	return []byte{}, nil
+}
+
+func (b *NoopBridge) Logs(message *api.SenseLog, key []byte) error {
+	return nil
+}
+
 func TestConnectToWebSocketServer(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
 	done := make(chan bool, 0)
 	messages := make(chan *sense.MessageParts, 0)
 
-	bridge := &core.NoopBridge{}
-	simple := core.NewSimpleHelloServer(bridge, "example", nil, done, messages, ks)
+	simple := core.NewSimpleHelloServer(&NoopBridge{}, "example", nil, done, messages, ks)
 
 	ts := httptest.NewServer(simple)
 	defer ts.Close()
@@ -64,7 +75,7 @@ func TestWrite(t *testing.T) {
 	done := make(chan bool, 0)
 	messages := make(chan *sense.MessageParts, 0)
 
-	simple := core.NewSimpleHelloServer(&core.NoopBridge{}, "example", nil, done, messages, ks)
+	simple := core.NewSimpleHelloServer(&NoopBridge{}, "example", nil, done, messages, ks)
 
 	ts := httptest.NewServer(simple)
 	defer ts.Close()
