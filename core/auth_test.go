@@ -33,7 +33,8 @@ func TestSign(t *testing.T) {
 	}
 
 	for i, test := range tests {
-		signed, err := sign(test.message, test.key)
+		auth := suripuAuth{key: test.key}
+		signed, err := auth.sign(test.message)
 		if test.shouldMatch && !bytes.Equal(test.signed, signed) {
 			t.Errorf("%x != %x", test.signed, signed)
 		} else if test.shouldFail && err == nil {
@@ -46,18 +47,22 @@ func TestSign(t *testing.T) {
 
 func TestVerify(t *testing.T) {
 	log.SetOutput(ioutil.Discard)
-	err := verify([]byte("hello"), []byte("1234567891234567"))
+	auth := suripuAuth{key: []byte("1234567891234567")}
+
+	err := auth.verify([]byte("hello"))
 	if err != ErrTooShort {
 		t.Errorf("%v content is too short. Should have failed", err)
 	}
 
 	content := "this is some content that should be at least forty eight bytes long"
-	err = verify([]byte(content), []byte("short key"))
+	auth = suripuAuth{key: []byte("short key")}
+	err = auth.verify([]byte(content))
 	if err != ErrInvalidKey {
 		t.Errorf("%v key is invalid. Should have failed", err)
 	}
 
-	err = verify([]byte(content), validKey)
+	auth = suripuAuth{key: validKey}
+	err = auth.verify([]byte(content))
 	if err != ErrDontMatch {
 		t.Errorf("%v content is too short. Should have failed", err)
 	}

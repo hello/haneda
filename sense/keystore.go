@@ -13,6 +13,11 @@ type KeyStore interface {
 	Get(senseId string) ([]byte, error)
 }
 
+var (
+	AesKeyAttributeName   = "aes_key"
+	DeviceIdAttributeName = "device_id"
+)
+
 // DynamoDBKeyStore implements the KeyStore interface
 type DynamoDBKeyStore struct {
 	awsConfig *aws.Config
@@ -28,11 +33,12 @@ func NewDynamoDBKeyStore(tableName string, config *aws.Config) *DynamoDBKeyStore
 	}
 }
 
+// Get attempts to retrieve the associated aes_key from DynamoDB Item at key senseId
 func (k *DynamoDBKeyStore) Get(senseId string) ([]byte, error) {
 	empty := make([]byte, 0)
 
 	attrs := make(map[string]*dynamodb.AttributeValue)
-	attrs["device_id"] = &dynamodb.AttributeValue{
+	attrs[DeviceIdAttributeName] = &dynamodb.AttributeValue{
 		S: aws.String(senseId),
 	}
 
@@ -40,7 +46,7 @@ func (k *DynamoDBKeyStore) Get(senseId string) ([]byte, error) {
 		Key:       attrs,
 		TableName: aws.String(k.tableName),
 		AttributesToGet: []*string{
-			aws.String("aes_key"),
+			aws.String(AesKeyAttributeName),
 		},
 	}
 
@@ -49,7 +55,7 @@ func (k *DynamoDBKeyStore) Get(senseId string) ([]byte, error) {
 		return empty, err
 	}
 
-	key, found := out.Item["aes_key"]
+	key, found := out.Item[AesKeyAttributeName]
 	if !found {
 		return empty, errors.New("missing aes_key attribute")
 	}

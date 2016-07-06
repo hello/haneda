@@ -15,7 +15,11 @@ var (
 	ErrDontMatch  = errors.New("don't match")
 )
 
-func sign(message []byte, key []byte) ([]byte, error) {
+type suripuAuth struct {
+	key []byte
+}
+
+func (a *suripuAuth) sign(message []byte) ([]byte, error) {
 	iv := make([]byte, 16)
 	for i := 0; i < len(iv); i++ {
 		iv[i] = byte(i)
@@ -30,7 +34,7 @@ func sign(message []byte, key []byte) ([]byte, error) {
 	}
 
 	// key[0] = 0
-	block, err := aes.NewCipher(key)
+	block, err := aes.NewCipher(a.key)
 	if err != nil {
 		log.Println(err)
 		return []byte{}, ErrInvalidKey
@@ -45,7 +49,7 @@ func sign(message []byte, key []byte) ([]byte, error) {
 	return resp, nil
 }
 
-func verify(body []byte, key []byte) error {
+func (a *suripuAuth) verify(body []byte) error {
 	if len(body) <= 48 {
 		log.Printf("action=verify body_len=%d error=too-short\n", len(body))
 		return ErrTooShort
@@ -68,7 +72,7 @@ func verify(body []byte, key []byte) error {
 		padded_sha[i] = c
 	}
 
-	block, err := aes.NewCipher(key)
+	block, err := aes.NewCipher(a.key)
 	if err != nil {
 		return ErrInvalidKey
 	}
