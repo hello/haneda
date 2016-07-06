@@ -8,24 +8,27 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 )
 
+// KeyStore
 type KeyStore interface {
 	Get(senseId string) ([]byte, error)
 }
 
+// DynamoDBKeyStore implements the KeyStore interface
 type DynamoDBKeyStore struct {
 	awsConfig *aws.Config
 	srv       *dynamodb.DynamoDB
 	tableName string
 }
 
-func NewDynamoDBKeyStore(tableName string, config *aws.Config) KeyStore {
-	return DynamoDBKeyStore{
+// Creates a new instance of DynamoDBKeyStore
+func NewDynamoDBKeyStore(tableName string, config *aws.Config) *DynamoDBKeyStore {
+	return &DynamoDBKeyStore{
 		tableName: tableName,
 		srv:       dynamodb.New(session.New(), config),
 	}
 }
 
-func (k DynamoDBKeyStore) Get(senseId string) ([]byte, error) {
+func (k *DynamoDBKeyStore) Get(senseId string) ([]byte, error) {
 	empty := make([]byte, 0)
 
 	attrs := make(map[string]*dynamodb.AttributeValue)
@@ -50,6 +53,7 @@ func (k DynamoDBKeyStore) Get(senseId string) ([]byte, error) {
 	if !found {
 		return empty, errors.New("missing aes_key attribute")
 	}
+
 	keyBytes, err := hex.DecodeString(*key.S)
 	return keyBytes, err
 }

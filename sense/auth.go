@@ -22,20 +22,25 @@ var (
 	ErrInvalidProto       = errors.New("invalid proto")
 )
 
-type SenseAuthHmacSha1 struct {
-	key     []byte
-	senseId SenseId
-	err     error
-}
-
+// MessageParser converts []byte to *MessagePart
+// used to read messages from Sense
 type MessageParser interface {
 	Parse(content []byte) (*MessageParts, error)
 }
 
+// MessageSigner converts *MessagePart to []byte
+// used to send messages to Sense
 type MessageSigner interface {
 	Sign(mp *MessageParts) ([]byte, error)
 }
 
+// SenseAuthHmacSha1 holds the information necessary to parse and sign messages for a given Sense
+type SenseAuthHmacSha1 struct {
+	key     []byte
+	senseId SenseId
+}
+
+// NewSenseAuthHmacSha1 creates a SenseAuthHmacSha1 struct
 func NewSenseAuthHmacSha1(key []byte, senseId SenseId) *SenseAuthHmacSha1 {
 	return &SenseAuthHmacSha1{
 		key:     key,
@@ -43,10 +48,7 @@ func NewSenseAuthHmacSha1(key []byte, senseId SenseId) *SenseAuthHmacSha1 {
 	}
 }
 
-func (s *SenseAuthHmacSha1) Err() error {
-	return s.err
-}
-
+// Parse is an implementation of MessageParser
 func (s *SenseAuthHmacSha1) Parse(content []byte) (*MessageParts, error) {
 	bbuf := bytes.NewReader(content)
 	var headerLen uint32
@@ -103,6 +105,7 @@ func (s *SenseAuthHmacSha1) Parse(content []byte) (*MessageParts, error) {
 	return m, nil
 }
 
+// Sign is an implementation of MessageSigner
 func (s *SenseAuthHmacSha1) Sign(mp *MessageParts) ([]byte, error) {
 	empty := make([]byte, 0)
 	content := make([]byte, 0)
@@ -161,6 +164,7 @@ func (s *SenseAuthHmacSha1) Sign(mp *MessageParts) ([]byte, error) {
 	return bbuf.Bytes(), nil
 }
 
+// Match validates the hmac signature given the message, sig and key
 func (s *SenseAuthHmacSha1) Match(message, messageMAC, key []byte) bool {
 	mac := hmac.New(sha1.New, key)
 	mac.Write(message)
