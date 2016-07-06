@@ -67,7 +67,7 @@ type GenericForwarder struct {
 
 func (f *GenericForwarder) Do(content, privKey []byte, path string, expectedHttpStatusCode int) ([]byte, error) {
 
-	auth := &suripuAuth{key: privKey}
+	auth := &SuripuAuth{key: privKey}
 
 	signed, err := auth.sign(content)
 	if err != nil {

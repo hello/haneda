@@ -36,7 +36,6 @@ outer:
 		select {
 		case m := <-c.out:
 			log.Printf("Sending %s Message to: %s\n", m.Header.GetType().String(), m.SenseId)
-
 			if err := c.Conn.WriteMessage(websocket.BinaryMessage, m.Body); err != nil {
 				fmt.Println(err)
 				break outer
@@ -57,6 +56,7 @@ func (c *SenseConn) Serve() {
 
 	go c.write()
 	for {
+		// this is blocking
 		_, content, err := c.Conn.ReadMessage()
 		if err != nil {
 			log.Println("Error reading.", err)
@@ -109,6 +109,8 @@ func (c *SenseConn) Serve() {
 					Body:   resp,
 				}
 				outbox = append(outbox, out2)
+			case haneda.Preamble_SENSE_LOG:
+				fmt.Println("Got logs not adding to outbox")
 			default:
 				log.Println("No response needed")
 			}

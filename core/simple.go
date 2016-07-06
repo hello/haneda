@@ -54,7 +54,7 @@ func (s *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		MiddleFirmwareVersion: sense.MiddleFirmwareVersion("middle"), // get from headers
 		PrivKey:               key,
 		out:                   c,
-		internalMsgs:          make(chan []byte, 0),
+		internalMsgs:          make(chan []byte, 2),
 		bridge:                s.bridge,
 		remover:               s.remover,
 		signer:                auth,
