@@ -10,18 +10,19 @@ import (
 	"time"
 )
 
+// SenseConn represents a connection from Sense to our server
 type SenseConn struct {
-	TopFirmwareVersion    sense.TopFirmwareVersion
-	MiddleFirmwareVersion sense.MiddleFirmwareVersion
-	SenseId               sense.SenseId
-	Conn                  *websocket.Conn
-	PrivKey               []byte
-	out                   chan *sense.MessageParts
-	internalMsgs          chan []byte
-	signer                sense.MessageSigner
-	parser                sense.MessageParser
-	bridge                Bridge
-	remover               ConnectionRemover
+	TopFirmwareVersion    sense.TopFirmwareVersion    // Derived from HTTP headers
+	MiddleFirmwareVersion sense.MiddleFirmwareVersion // Derived from HTTP headers
+	SenseId               sense.SenseId               // Derived from HTTP headers
+	Conn                  *websocket.Conn             // WS Conn from successful upgrade
+	PrivKey               []byte                      // Key is fetched only once when connection is established
+	out                   chan *sense.MessageParts    // add to this channel to send to sense. body should be signed
+	internalMsgs          chan []byte                 // add to this channel to write raw messages to sense
+	signer                sense.MessageSigner         // signer signs outgoing messages
+	parser                sense.MessageParser         // parser parses incoming messages
+	bridge                Bridge                      // bridge dispatches proto to http service
+	remover               ConnectionRemover           // removes ws connection when sense disconnects
 }
 
 func (c *SenseConn) Send(message *sense.MessageParts) {
@@ -55,6 +56,7 @@ func (c *SenseConn) Serve() {
 
 	go c.write()
 	for {
+		// this is blocking
 		_, content, err := c.Conn.ReadMessage()
 		if err != nil {
 			log.Println("Error reading.", err)
@@ -107,6 +109,8 @@ func (c *SenseConn) Serve() {
 					Body:   resp,
 				}
 				outbox = append(outbox, out2)
+			case haneda.Preamble_SENSE_LOG:
+				fmt.Println("Got logs not adding to outbox")
 			default:
 				log.Println("No response needed")
 			}

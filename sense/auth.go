@@ -38,13 +38,23 @@ type MessageSigner interface {
 type SenseAuthHmacSha1 struct {
 	key     []byte
 	senseId SenseId
+	context string
 }
 
-// NewSenseAuthHmacSha1 creates a SenseAuthHmacSha1 struct
 func NewSenseAuthHmacSha1(key []byte, senseId SenseId) *SenseAuthHmacSha1 {
 	return &SenseAuthHmacSha1{
 		key:     key,
 		senseId: senseId,
+		context: string(senseId),
+	}
+}
+
+// NewSenseAuthHmacSha1 creates a SenseAuthHmacSha1 struct
+func NewSenseAuthHmacSha1WithContext(key []byte, senseId SenseId, context string) *SenseAuthHmacSha1 {
+	return &SenseAuthHmacSha1{
+		key:     key,
+		senseId: senseId,
+		context: context,
 	}
 }
 

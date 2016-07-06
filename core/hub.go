@@ -14,7 +14,8 @@ type ConnectionAdder interface {
 }
 
 type Hub struct {
-	removeChan chan sense.SenseId
+	removeChan     chan sense.SenseId
+	chanBufferSize int
 }
 
 func (h *Hub) Remove(senseId sense.SenseId) {
@@ -23,5 +24,5 @@ func (h *Hub) Remove(senseId sense.SenseId) {
 
 func (h *Hub) Add(senseId sense.SenseId) chan *sense.MessageParts {
 	fmt.Println("adding", senseId)
-	return make(chan *sense.MessageParts, 1)
+	return make(chan *sense.MessageParts, h.chanBufferSize)
 }

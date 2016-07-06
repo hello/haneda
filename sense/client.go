@@ -1,13 +1,13 @@
 package sense
 
 import (
+	"errors"
 	"fmt"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
 	"github.com/hello/haneda/api"
 	"github.com/hello/haneda/haneda"
 	"log"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -51,15 +51,8 @@ func (s *Sense15) Connect(u *url.URL, headers http.Header) error {
 	return nil
 }
 
-func (s *Sense15) Write(message []byte) {
-	rand.Seed(time.Now().UnixNano())
-	n := rand.Int31n(1000)
-	time.Sleep(time.Duration(n) * time.Millisecond)
-	err := s.conn.WriteMessage(websocket.BinaryMessage, message)
-	if err != nil {
-		log.Println("write:", err)
-		s.Done <- true
-	}
+func (s *Sense15) Write(message []byte) error {
+	return s.conn.WriteMessage(websocket.BinaryMessage, message)
 }
 
 func (s *Sense15) periodic(messageId uint64) *MessageParts {
@@ -105,6 +98,33 @@ func (s *Sense15) genLogs(messageId uint64, logs []string) *MessageParts {
 		Body:   body,
 	}
 	return mp
+}
+
+type Result struct {
+	body []byte
+	err  error
+}
+
+func (s *Sense15) Read(timeout time.Duration) ([]byte, error) {
+
+	results := make(chan *Result, 1)
+	go func() {
+		_, body, err := s.conn.ReadMessage()
+		results <- &Result{body: body, err: err}
+	}()
+
+outer:
+	for {
+		select {
+		case res := <-results:
+			return res.body, res.err
+		case <-time.After(timeout):
+			fmt.Println("timeout 1")
+			break outer
+		}
+	}
+
+	return []byte{}, errors.New("timeout")
 }
 
 func (s *Sense15) Send(sleep time.Duration) {
@@ -201,7 +221,7 @@ func (s *Sense15) Receive() {
 			ackMessage := &haneda.Ack{}
 			err := proto.Unmarshal(mp.Body, ackMessage)
 			if err != nil || ackMessage.Status.String() != haneda.Ack_SUCCESS.String() {
-				log.Println(err, ackMessage.GetMessageId(), ackMessage.GetStatus())
+				log.Println("-->", err, ackMessage.GetMessageId(), ackMessage.GetStatus())
 				continue
 			}
 			s.Store.Expire(ackMessage.GetMessageId())

@@ -15,11 +15,11 @@ var (
 	ErrDontMatch  = errors.New("don't match")
 )
 
-type suripuAuth struct {
+type SuripuAuth struct {
 	key []byte
 }
 
-func (a *suripuAuth) sign(message []byte) ([]byte, error) {
+func (a *SuripuAuth) sign(message []byte) ([]byte, error) {
 	iv := make([]byte, 16)
 	for i := 0; i < len(iv); i++ {
 		iv[i] = byte(i)
@@ -49,7 +49,7 @@ func (a *suripuAuth) sign(message []byte) ([]byte, error) {
 	return resp, nil
 }
 
-func (a *suripuAuth) verify(body []byte) error {
+func (a *SuripuAuth) verify(body []byte) error {
 	if len(body) <= 48 {
 		log.Printf("action=verify body_len=%d error=too-short\n", len(body))
 		return ErrTooShort
