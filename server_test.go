@@ -24,9 +24,7 @@ func (k *FakeKeyStore) Get(senseId string) ([]byte, error) {
 
 var (
 	senseId = sense.SenseId("name")
-	ks      = &FakeKeyStore{
-		senseId: string(senseId),
-	}
+	ks      = &FakeKeyStore{senseId: string(senseId)}
 )
 
 type NoopBridge struct {

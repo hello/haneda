@@ -75,7 +75,8 @@ func (s *SimpleHelloServer) Shutdown() {
 
 func NewSimpleHelloServer(bridge Bridge, topic string, pool *redis.Pool, done chan bool, messages chan *sense.MessageParts, ks sense.KeyStore) *SimpleHelloServer {
 	hub := &Hub{
-		removeChan: make(chan sense.SenseId, 2),
+		removeChan:     make(chan sense.SenseId, 2),
+		chanBufferSize: 2,
 	}
 
 	return &SimpleHelloServer{

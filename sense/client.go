@@ -201,7 +201,7 @@ func (s *Sense15) Receive() {
 			ackMessage := &haneda.Ack{}
 			err := proto.Unmarshal(mp.Body, ackMessage)
 			if err != nil || ackMessage.Status.String() != haneda.Ack_SUCCESS.String() {
-				log.Println(err, ackMessage.GetMessageId(), ackMessage.GetStatus())
+				log.Println("-->", err, ackMessage.GetMessageId(), ackMessage.GetStatus())
 				continue
 			}
 			s.Store.Expire(ackMessage.GetMessageId())
