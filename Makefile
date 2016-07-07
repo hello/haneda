@@ -11,6 +11,7 @@ format:
 test:
 	go test ./core/
 	go test ./sense/
+	go test ./client/
 	go test .
 
 release: osx linux

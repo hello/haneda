@@ -36,8 +36,8 @@ func (s *BenchServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		bridge:                s.Bridge,
 		remover:               s.Remover,
 	}
-
-	go senseConn.Serve()
+	stats := make(chan *HelloStat, 10)
+	go senseConn.Serve(stats)
 }
 
 func (s *BenchServer) Start() {
