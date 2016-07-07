@@ -53,7 +53,7 @@ outer:
 func (c *SenseConn) Serve(stats chan *HelloStat) {
 	i := 0
 	defer c.Conn.Close()
-
+	c.logger.Log("type", "yo")
 	go c.write()
 	for {
 		// this is blocking

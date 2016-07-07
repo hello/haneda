@@ -1,10 +1,10 @@
 package core
 
 import (
-	"fmt"
+	"github.com/go-kit/kit/log"
 	"github.com/hello/haneda/sense"
-	"log"
 	"net/http"
+	"os"
 )
 
 type BenchServer struct {
@@ -13,17 +13,21 @@ type BenchServer struct {
 	Key            []byte
 	Bridge         Bridge
 	Remover        ConnectionRemover
+	Logger         log.Logger
 }
 
 func (s *BenchServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Serving http req")
+
+	s.Logger.Log("Serving http req")
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println("here", err)
+		s.Logger.Log("error", err)
 		return
 	}
 
 	senseId := sense.SenseId("fake")
+	logger := log.NewLogfmtLogger(os.Stderr)
+	logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "bench")
 
 	senseConn := &SenseConn{
 		SenseId:               senseId,
@@ -35,11 +39,12 @@ func (s *BenchServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		internalMsgs:          s.SignedMessages,
 		bridge:                s.Bridge,
 		remover:               s.Remover,
+		logger:                logger,
 	}
 	stats := make(chan *HelloStat, 10)
 	go senseConn.Serve(stats)
 }
 
 func (s *BenchServer) Start() {
-	log.Println("Bench server started")
+	s.Logger.Log("Bench server started")
 }
