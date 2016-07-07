@@ -39,14 +39,32 @@ type SimpleHelloServer struct {
 }
 
 type HelloStat struct {
-	ErrRead  *uint64
-	OkRead   *uint64
-	ErrParse *uint64
-	ErrProxy *uint64
+	ErrRead      *uint64
+	OkRead       *uint64
+	ErrParse     *uint64
+	ErrProxy     *uint64
+	CurrConns    *float64
+	ConnDuration *int64
 }
 
-func hInt64(v int) *uint64 {
+func hInt64(v int) *int64 {
+	p := new(int64)
+	*p = int64(v)
+	return p
+}
+
+func hUint64(v int) *uint64 {
 	p := new(uint64)
 	*p = uint64(v)
 	return p
+}
+
+func hFloat(v int) *float64 {
+	p := new(float64)
+	*p = float64(v)
+	return p
+}
+
+func hFloat64(v float64) *float64 {
+	return &v
 }

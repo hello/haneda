@@ -61,10 +61,10 @@ func (c *SenseConn) Serve(stats chan *HelloStat) {
 
 		if err != nil {
 			c.logger.Log("error", err)
-			stats <- &HelloStat{ErrRead: hInt64(1)}
+			stats <- &HelloStat{ErrRead: hUint64(1)}
 			break
 		}
-		stats <- &HelloStat{OkRead: hInt64(1)}
+		stats <- &HelloStat{OkRead: hUint64(1)}
 
 		mp, err := c.parser.Parse(content)
 		if err != nil {
@@ -85,7 +85,7 @@ func (c *SenseConn) Serve(stats chan *HelloStat) {
 			ack.Status = haneda.Ack_CLIENT_REQUEST_ERROR.Enum()
 			c.logger.Log("action=send-error-ack", "message_id", mp.Header.GetId())
 			c.logger.Log("error", err)
-			stats <- &HelloStat{ErrProxy: hInt64(1)}
+			stats <- &HelloStat{ErrProxy: hUint64(1)}
 		}
 
 		body, _ := proto.Marshal(ack)
