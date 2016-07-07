@@ -136,6 +136,8 @@ func (s *Sense15) Send(sleep time.Duration) {
 	msgId := uint64(1)
 
 	logs := make([]string, 0)
+
+outer:
 	for {
 		select {
 		case <-ticker.C:
@@ -144,10 +146,14 @@ func (s *Sense15) Send(sleep time.Duration) {
 			env, err := s.Auth.Sign(mp)
 			if err != nil {
 				s.logger.Log("error", err)
-				s.Done <- true
+				break outer
 			}
-			s.Write(env)
-			s.logger.Log("msg_type", mp.Header.GetType(), "msg_id", msgId)
+
+			if writeErr := s.Write(env); err != nil {
+				s.logger.Log("write_err", writeErr)
+				break outer
+			}
+			s.logger.Log("action", "send", "msg_type", mp.Header.GetType(), "msg_id", msgId)
 			i++
 			msgId++
 		case logMessage := <-s.Logs:
@@ -157,10 +163,14 @@ func (s *Sense15) Send(sleep time.Duration) {
 				env, err := s.Auth.Sign(mp)
 				if err != nil {
 					s.logger.Log("error", err)
-					s.Done <- true
+					break outer
 				}
 
-				s.Write(env)
+				if writeErr := s.Write(env); err != nil {
+					s.logger.Log("write_err", writeErr)
+					s.Disconnect()
+					break outer
+				}
 				s.logger.Log("msg_type", mp.Header.GetType(), "msg_id", msgId)
 				i++
 				msgId++
@@ -181,10 +191,12 @@ func (s *Sense15) Send(sleep time.Duration) {
 				s.logger.Log("error", err, "action", "send-ws-close")
 
 			}
-			s.Disconnect()
-			s.Done <- true
+			break outer
 		}
 	}
+	s.Disconnect()
+	s.Done <- true
+	s.logger.Log("action", "write-thread-closed")
 }
 
 func (s *Sense15) Disconnect() error {
@@ -198,6 +210,7 @@ func (s *Sense15) Receive() {
 		_, message, err := s.conn.ReadMessage()
 		if err != nil {
 			s.logger.Log("error", err)
+			s.Done <- true
 			break
 		}
 

@@ -4,13 +4,14 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"github.com/go-kit/kit/log"
 	"github.com/gorilla/websocket"
 	"github.com/hello/haneda/core"
 	"github.com/hello/haneda/sense"
 	config "github.com/stvp/go-toml-config"
-	"log"
 	"math/rand"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -25,8 +26,9 @@ var (
 )
 
 type BenchClient struct {
-	auth  sense.MessageSigner
-	funcs []genFunc
+	auth   sense.MessageSigner
+	funcs  []genFunc
+	logger log.Logger
 }
 
 type genFunc func(msgId uint64) (*sense.MessageParts, error)
@@ -46,27 +48,27 @@ func (b *BenchClient) genRandomMessage(i int) ([]byte, error) {
 	return b.auth.Sign(mp)
 }
 
-func (c *BenchClient) Start(endpoint string, in chan []byte, tickDuration time.Duration) {
+func (b *BenchClient) Start(endpoint string, in chan []byte, tickDuration time.Duration) {
 	wc, _, err := websocket.DefaultDialer.Dial(endpoint, http.Header{})
 	if err != nil {
-		fmt.Println(err)
+		b.logger.Log("err", err)
 		return
 	}
 	done := make(chan bool, 0)
 	go func(c *websocket.Conn, done chan bool) {
-		fmt.Println("starting reading")
+		b.logger.Log("action", "start_reading")
 		i := 0
 		totalBytes := 0
 		for {
 			_, content, err := c.ReadMessage()
 			if err != nil {
-				fmt.Println(err)
+				b.logger.Log("error", err)
 				done <- false
 			}
 			totalBytes += len(content)
 			if i%100 == 0 {
-				fmt.Println("Iteration:", i)
-				fmt.Println("Total:", totalBytes)
+				b.logger.Log("iteration", i)
+				b.logger.Log("total", totalBytes)
 			}
 			i++
 		}
@@ -78,35 +80,36 @@ func (c *BenchClient) Start(endpoint string, in chan []byte, tickDuration time.D
 outer:
 	for {
 		select {
-		case b := <-done:
-			fmt.Println("Done. interrupting", b)
+		case <-done:
+			b.logger.Log("interrupting", true)
 			break outer
 		case <-tick.C:
-			m, err := c.genRandomMessage(i)
+			m, err := b.genRandomMessage(i)
 			i++
 			if err != nil {
-				fmt.Println(err)
+				b.logger.Log("error", err)
 				break outer
 			}
 			in <- m
 		case <-timeout.C:
-			fmt.Println("Timeout.")
+			b.logger.Log("timeout", true)
 			break outer
 		}
 	}
-	fmt.Println("Done")
+	b.logger.Log("done", true)
 }
 
 func main() {
 	flag.Parse()
 
+	logger := log.NewLogfmtLogger(os.Stderr)
+	logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC)
+
 	if err := config.Parse(*configPath); err != nil {
-		log.Printf("[haneda-server] can't find configuration: %s\n", *configPath)
-		log.Fatal(err)
+		logger.Log("error", err)
 	}
-	log.Printf("[haneda-server] Configuration loaded from: %s\n", *configPath)
-	msg := "[haneda-server] Configured to proxy requests to: %s.\n"
-	log.Printf(msg, *proxyEndpoint)
+
+	logger.Log("proxy_endpoint", *proxyEndpoint)
 
 	messages := make(chan *sense.MessageParts, 2)
 	signedMessages := make(chan []byte, 2)
@@ -114,18 +117,19 @@ func main() {
 	bench := &core.BenchServer{
 		Messages:       messages,
 		SignedMessages: signedMessages,
+		Logger:         logger,
 	}
 
-	stats := make(chan *core.HelloStat, 10)
-	go bench.Start(stats)
+	go bench.Start()
 
 	privKey, _ := hex.DecodeString("AD332E8DFE33490AAF35CA2824ECADC0")
 
 	manifestGenerator := &sense.FileManifestGenerator{}
 
 	bc := &BenchClient{
-		auth:  sense.NewSenseAuthHmacSha1(privKey, sense.SenseId("whatever")),
-		funcs: []genFunc{sense.GenSyncResp, sense.GenMesseji, manifestGenerator.Generate},
+		auth:   sense.NewSenseAuthHmacSha1(privKey, sense.SenseId("whatever")),
+		funcs:  []genFunc{sense.GenSyncResp, sense.GenMesseji, manifestGenerator.Generate},
+		logger: logger,
 	}
 
 	wsPath := "/protobuf"
@@ -137,6 +141,7 @@ func main() {
 			panic("ListenAndServe: " + err.Error())
 		}
 	}()
+
 	if !*serverOnly {
 		time.Sleep(2 * time.Second)
 		bc.Start("ws://"+*serverExternalHost+wsPath, signedMessages, 1*time.Second)
