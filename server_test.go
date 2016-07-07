@@ -17,29 +17,24 @@ import (
 	"time"
 )
 
-type FakeKeyStore struct {
-	senseId string
-}
-
-func (k *FakeKeyStore) Get(senseId string) ([]byte, error) {
-	return []byte("1234"), nil
-}
-
 var (
 	senseId = sense.SenseId("name")
-	ks      = &FakeKeyStore{senseId: string(senseId)}
+	key     = []byte("abcdefghjklmnop")
+	ks      = &sense.FakeKeyStore{SenseId: string(senseId), Key: key}
+	conf    = &core.HelloConfig{
+		Redis: &core.RedisConfig{
+			PubSub: "example",
+		},
+	}
 )
 
-type NoopBridge struct {
+type FakePeriodicDataBrigde struct {
+	core.NoopBridge
 }
 
-func (b *NoopBridge) PeriodicData(message *api.BatchedPeriodicData, key []byte) ([]byte, error) {
+func (b *FakePeriodicDataBrigde) PeriodicData(message *api.BatchedPeriodicData, key []byte) ([]byte, error) {
 	sr, err := sense.GenSyncResp(uint64(1))
 	return sr.Body, err
-}
-
-func (b *NoopBridge) Logs(message *api.SenseLog, key []byte) error {
-	return nil
 }
 
 func TestConnectToWebSocketServer(t *testing.T) {
@@ -47,7 +42,7 @@ func TestConnectToWebSocketServer(t *testing.T) {
 	done := make(chan bool, 0)
 	messages := make(chan *sense.MessageParts, 0)
 
-	simple := core.NewSimpleHelloServer(&NoopBridge{}, "example", nil, done, messages, ks)
+	simple := core.NewSimpleHelloServer(&FakePeriodicDataBrigde{}, nil, done, messages, ks, conf)
 
 	ts := httptest.NewServer(simple)
 	defer ts.Close()
@@ -56,7 +51,7 @@ func TestConnectToWebSocketServer(t *testing.T) {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	client := sense.New15(senseId, interrupt, done, []byte("1234"))
+	client := sense.New15(senseId, interrupt, done, key)
 
 	err := client.Connect(wsurl, http.Header{})
 	if err != nil {
@@ -77,7 +72,7 @@ func TestWrite(t *testing.T) {
 	done := make(chan bool, 0)
 	messages := make(chan *sense.MessageParts, 0)
 
-	simple := core.NewSimpleHelloServer(&NoopBridge{}, "example", nil, done, messages, ks)
+	simple := core.NewSimpleHelloServer(&FakePeriodicDataBrigde{}, nil, done, messages, ks, conf)
 
 	ts := httptest.NewServer(simple)
 	defer ts.Close()
@@ -86,7 +81,7 @@ func TestWrite(t *testing.T) {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	client := sense.New15(senseId, interrupt, done, []byte("1234"))
+	client := sense.New15(senseId, interrupt, done, key)
 	err := client.Connect(wsurl, http.Header{})
 	if err != nil {
 		t.Errorf("%v", err)
@@ -113,7 +108,7 @@ func TestPingPong(t *testing.T) {
 	done := make(chan bool, 0)
 	messages := make(chan *sense.MessageParts, 0)
 
-	simple := core.NewSimpleHelloServer(&NoopBridge{}, "example", nil, done, messages, ks)
+	simple := core.NewSimpleHelloServer(&FakePeriodicDataBrigde{}, nil, done, messages, ks, conf)
 
 	ts := httptest.NewServer(simple)
 	defer ts.Close()
@@ -122,7 +117,6 @@ func TestPingPong(t *testing.T) {
 	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 
-	key := []byte("1234")
 	client := sense.New15(senseId, interrupt, done, key)
 	err := client.Connect(wsurl, http.Header{})
 	if err != nil {

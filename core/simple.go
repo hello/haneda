@@ -1,15 +1,18 @@
 package core
 
 import (
-	"fmt"
 	"github.com/garyburd/redigo/redis"
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/metrics"
+	"github.com/go-kit/kit/metrics/graphite"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
 	"github.com/hello/haneda/api"
 	"github.com/hello/haneda/haneda"
 	"github.com/hello/haneda/sense"
-	"log"
 	"net/http"
+	"os"
+	"time"
 )
 
 var upgrader = websocket.Upgrader{} // use default options
@@ -23,22 +26,23 @@ func (s *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// }
 
 	connectedSense := r.Header.Get("X-Hello-Sense-Id")
-	log.Println(fmt.Sprintf("sense_id=%s ip_address=%s\n", connectedSense, r.RemoteAddr))
+	s.logger.Log("action", "connection-attempt", "sense_id", connectedSense, "ip_address", r.RemoteAddr)
 	if connectedSense == "" {
+		s.logger.Log("error", "missing_header", "ip_address", r.RemoteAddr)
 		http.Error(w, "Missing header with Sense ID", 400)
 		return
 	}
 
 	key, err := s.keystore.Get(connectedSense)
 	if err != nil {
-		log.Println("Couldn't connect to keystore for Sense", connectedSense, err)
+		s.logger.Log("action", "key_store_connect", "error", err, "sense_id", connectedSense)
 		http.Error(w, "Server error", 500)
 		return
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println("here", err)
+		s.logger.Log("error", err, "reason", "failed_upgrading_ws")
 		return
 	}
 
@@ -46,6 +50,8 @@ func (s *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c := s.adder.Add(senseId)
 
 	auth := sense.NewSenseAuthHmacSha1(key, senseId)
+	logger := log.NewLogfmtLogger(os.Stderr)
+	logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "sense_id", senseId, "ip_address", r.RemoteAddr)
 
 	senseConn := &SenseConn{
 		SenseId:               senseId,
@@ -59,9 +65,10 @@ func (s *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		remover:               s.remover,
 		signer:                auth,
 		parser:                auth,
+		logger:                logger,
 	}
 
-	go senseConn.Serve()
+	go senseConn.Serve(s.stats)
 }
 
 func (s *SimpleHelloServer) Shutdown() {
@@ -73,27 +80,54 @@ func (s *SimpleHelloServer) Shutdown() {
 	close(s.messages)
 }
 
-func NewSimpleHelloServer(bridge Bridge, topic string, pool *redis.Pool, done chan bool, messages chan *sense.MessageParts, ks sense.KeyStore) *SimpleHelloServer {
+func NewSimpleHelloServer(bridge Bridge, pool *redis.Pool, done chan bool, messages chan *sense.MessageParts, ks sense.KeyStore, helloConf *HelloConfig) *SimpleHelloServer {
+
+	logger := log.NewLogfmtLogger(os.Stderr)
+	logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "simple-hello-server")
+	hubLogger := log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "hub")
+
 	hub := &Hub{
 		removeChan:     make(chan sense.SenseId, 2),
 		chanBufferSize: 2,
+		logger:         hubLogger,
 	}
 
-	return &SimpleHelloServer{
+	s := &SimpleHelloServer{
 		bridge:   bridge,
 		done:     done,
 		pool:     pool,
-		topic:    topic,
+		topic:    helloConf.Redis.PubSub,
 		messages: messages,
 		pairs:    make(map[sense.SenseId]chan *sense.MessageParts),
 		keystore: ks,
 		adder:    hub,
 		remover:  hub,
+		logger:   logger,
+		stats:    make(chan *HelloStat, 10),
 	}
+
+	if helloConf.Graphite != nil {
+		graphiteLogger := log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "graphite")
+		s.metrics = graphite.NewEmitter("tcp", ":8888", helloConf.Graphite.Host, 5*time.Second, graphiteLogger)
+	}
+
+	return s
 }
 
 func (s *SimpleHelloServer) Start() {
-	log.Println("SimpleHelloServer running")
+	var errRead metrics.Counter
+	var okRead metrics.Counter
+	var errParse metrics.Counter
+	var errProxy metrics.Counter
+
+	if s.metrics != nil {
+		s.logger.Log("action", "running")
+		errRead = s.metrics.NewCounter("err_read")
+		okRead = s.metrics.NewCounter("ok_read")
+		errParse = s.metrics.NewCounter("err_parse")
+		errProxy = s.metrics.NewCounter("err_proxy")
+	}
+
 	for {
 		select {
 		case m := <-s.messages:
@@ -101,7 +135,28 @@ func (s *SimpleHelloServer) Start() {
 			if found {
 				c <- m
 			} else {
-				fmt.Printf("%s\n", m.SenseId)
+				s.logger.Log("sense_id", m.SenseId)
+			}
+		case stat := <-s.stats:
+			if s.metrics != nil {
+				if stat.ErrRead != nil {
+					s.logger.Log("errRead", *stat.ErrRead)
+					errRead.Add(*stat.ErrRead)
+				}
+				if stat.OkRead != nil {
+					s.logger.Log("okRead", *stat.OkRead)
+					okRead.Add(*stat.OkRead)
+				}
+
+				if stat.ErrParse != nil {
+					s.logger.Log("errParse", *stat.ErrParse)
+					errParse.Add(*stat.ErrParse)
+				}
+
+				if stat.ErrProxy != nil {
+					s.logger.Log("errProxy", *stat.ErrProxy)
+					errProxy.Add(*stat.ErrProxy)
+				}
 			}
 		}
 	}
@@ -112,7 +167,7 @@ func (s *SimpleHelloServer) Register(senseId sense.SenseId) chan *sense.MessageP
 	defer s.Unlock()
 	c := make(chan *sense.MessageParts)
 	s.pairs[senseId] = c
-	log.Println("added", senseId)
+	s.logger.Log("action", "add", "sense_id", senseId)
 	return c
 }
 
@@ -120,7 +175,7 @@ func (s *SimpleHelloServer) Remove(senseId sense.SenseId) {
 	s.Lock()
 	defer s.Unlock()
 	delete(s.pairs, senseId)
-	log.Println("removed", senseId)
+	s.logger.Log("action", "remove", "sense_id", senseId)
 }
 
 func dispatch(bridge Bridge, message *sense.MessageParts, s *SenseConn) ([]byte, error) {

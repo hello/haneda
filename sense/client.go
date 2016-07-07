@@ -3,11 +3,11 @@ package sense
 import (
 	"errors"
 	"fmt"
+	"github.com/go-kit/kit/log"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
 	"github.com/hello/haneda/api"
 	"github.com/hello/haneda/haneda"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -23,7 +23,7 @@ type Client interface {
 	Disconnect() error
 	Send(t time.Duration)
 	Receive()
-	Write(message []byte)
+	Write(message []byte) error
 }
 
 type Sense15 struct {
@@ -35,6 +35,7 @@ type Sense15 struct {
 	PrivKey   []byte
 	Auth      *SenseAuthHmacSha1
 	Store     *Store
+	logger    log.Logger
 }
 
 func (s *Sense15) Id() string {
@@ -45,6 +46,7 @@ func (s *Sense15) Connect(u *url.URL, headers http.Header) error {
 	headers.Add("X-Hello-Sense-Id", string(s.Name))
 	c, _, err := websocket.DefaultDialer.Dial(u.String(), headers)
 	if err != nil {
+		s.logger.Log("error", err)
 		return err
 	}
 	s.conn = c
@@ -71,7 +73,7 @@ func (s *Sense15) periodic(messageId uint64) *MessageParts {
 
 	body, pbErr := proto.Marshal(batched)
 	if pbErr != nil {
-		log.Println("pbErr", pbErr)
+		s.logger.Log("pbErr", pbErr)
 		s.Done <- true
 	}
 
@@ -141,17 +143,11 @@ func (s *Sense15) Send(sleep time.Duration) {
 			mp := s.periodic(msgId)
 			env, err := s.Auth.Sign(mp)
 			if err != nil {
-				log.Println(err)
-				s.Done <- true
-			}
-
-			duplicate := s.Store.Save(msgId)
-			if duplicate != nil {
-				log.Println("duplicate:", msgId)
+				s.logger.Log("error", err)
 				s.Done <- true
 			}
 			s.Write(env)
-			log.Println("<--", mp.Header.GetType(), msgId)
+			s.logger.Log("msg_type", mp.Header.GetType(), "msg_id", msgId)
 			i++
 			msgId++
 		case logMessage := <-s.Logs:
@@ -160,17 +156,12 @@ func (s *Sense15) Send(sleep time.Duration) {
 
 				env, err := s.Auth.Sign(mp)
 				if err != nil {
-					log.Println(err)
+					s.logger.Log("error", err)
 					s.Done <- true
 				}
 
 				s.Write(env)
-				duplicate := s.Store.Save(msgId)
-				if duplicate != nil {
-					log.Println("duplicate:", msgId)
-					s.Done <- true
-				}
-				log.Println("<--", mp.Header.GetType(), msgId)
+				s.logger.Log("msg_type", mp.Header.GetType(), "msg_id", msgId)
 				i++
 				msgId++
 				logs = make([]string, 0)
@@ -180,13 +171,14 @@ func (s *Sense15) Send(sleep time.Duration) {
 			}
 
 		case <-s.Interrupt:
-			log.Println("interrupt")
+			s.logger.Log("action", "interrupted")
 			// To cleanly close a connection, a client should send a close
 			// frame and wait for the server to close the connection.
-			log.Println("Sent", s.conn.LocalAddr(), i)
+
+			s.logger.Log("action", "send-ws-close")
 			err := s.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 			if err != nil {
-				log.Println("write close:", err)
+				s.logger.Log("error", err, "action", "send-ws-close")
 
 			}
 			s.Disconnect()
@@ -197,7 +189,7 @@ func (s *Sense15) Send(sleep time.Duration) {
 
 func (s *Sense15) Disconnect() error {
 	signal.Notify(s.Interrupt, syscall.SIGTERM)
-	log.Println("Disconnecting")
+	s.logger.Log("action", "disconnect")
 	return s.conn.Close()
 }
 
@@ -205,14 +197,13 @@ func (s *Sense15) Receive() {
 	for {
 		_, message, err := s.conn.ReadMessage()
 		if err != nil {
-			log.Println("read:", err)
+			s.logger.Log("error", err)
 			break
 		}
 
-		log.Println("len:", len(message))
 		mp, parseErr := s.Auth.Parse(message)
 		if parseErr != nil {
-			log.Println("parseErr", parseErr)
+			s.logger.Log("error", parseErr, "action", "parse_failed")
 			continue
 		}
 
@@ -221,22 +212,20 @@ func (s *Sense15) Receive() {
 			ackMessage := &haneda.Ack{}
 			err := proto.Unmarshal(mp.Body, ackMessage)
 			if err != nil || ackMessage.Status.String() != haneda.Ack_SUCCESS.String() {
-				log.Println("-->", err, ackMessage.GetMessageId(), ackMessage.GetStatus())
+				s.logger.Log("error", err, "msg_id", ackMessage.GetMessageId(), "ack_status", ackMessage.GetStatus())
 				continue
 			}
 			s.Store.Expire(ackMessage.GetMessageId())
-			log.Println("-->", mp.Header.GetType(), ackMessage.GetMessageId())
+			s.logger.Log("msg_type", mp.Header.GetType(), "msg_id", ackMessage.GetMessageId())
 		case haneda.Preamble_SYNC_RESPONSE:
 			syncResp := &api.SyncResponse{}
 			err := proto.Unmarshal(mp.Body, syncResp)
 			if err != nil {
-				log.Println(err)
+				s.logger.Log("error", err)
 				continue
 			}
-			// log.Println("-->", mp.Header.GetType(), syncResp.GetRingTimeAck())
-			log.Println("-->", mp.Header.GetType(), syncResp.GetRoomConditions().Enum())
 		default:
-			log.Println("-->", mp.Header.GetType())
+			s.logger.Log("msg_type", "unknown")
 
 		}
 
@@ -244,7 +233,7 @@ func (s *Sense15) Receive() {
 		s.Logs <- lm
 	}
 
-	log.Println("Done receiving")
+	s.logger.Log("action", "receiving", "status", "complete")
 }
 
 func NewDefaultSenseOneFive(sense *Sense15) *Sense15 {
@@ -261,18 +250,26 @@ func NewDefaultSenseOneFive(sense *Sense15) *Sense15 {
 	if sense.Auth == nil {
 		sense.Auth = &SenseAuthHmacSha1{key: sense.PrivKey}
 	}
+	if sense.logger == nil {
+		logger := log.NewLogfmtLogger(os.Stderr)
+		sense.logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "sense_id", sense.Name)
+	}
 	return sense
 }
 
-func New15(name SenseId, interrupt chan os.Signal, done chan bool, privKey []byte) *Sense15 {
+func New15(senseId SenseId, interrupt chan os.Signal, done chan bool, privKey []byte) *Sense15 {
 	store := NewStore()
+	logger := log.NewLogfmtLogger(os.Stderr)
+	logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "sense_id", senseId)
+
 	return &Sense15{
 		Interrupt: interrupt,
-		Name:      name,
+		Name:      senseId,
 		Done:      done,
 		Logs:      make(chan string, 16),
 		PrivKey:   privKey,
 		Auth:      &SenseAuthHmacSha1{key: privKey},
 		Store:     store,
+		logger:    logger,
 	}
 }

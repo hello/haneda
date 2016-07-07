@@ -3,30 +3,19 @@ package main
 import (
 	"flag"
 	"fmt"
+	toml "github.com/BurntSushi/toml"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/garyburd/redigo/redis"
+	"github.com/go-kit/kit/log"
 	"github.com/hello/haneda/core"
 	"github.com/hello/haneda/sense"
-	config "github.com/stvp/go-toml-config"
-	"log"
 	"net/http"
+	"os"
 )
 
 var (
 	configPath = flag.String("c", "server.conf", "Path to config file. Ex: kenko -c /etc/hello/kenko.conf")
-)
-
-var (
-	serverExternalHost = config.String("server.external_host", ":8082")
-	serverInternalHost = config.String("server.internal_host", ":8082")
-	proxyEndpoint      = config.String("proxy.endpoint", "http://localhost:5555")
-	redisHost          = config.String("redis.host", ":6379")
-	pubSubKey          = config.String("redis.pubsub", "example")
-	awsKey             = config.String("aws.key", "")
-	awsSecret          = config.String("aws.secret", "")
-	awsRegion          = config.String("aws.region", "")
-	keyStoreTable      = config.String("aws.keystore_table", "")
 )
 
 type PublishHanlder struct {
@@ -41,7 +30,7 @@ func (h *PublishHanlder) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%s", msg)
 }
 
-func webserver(topic string, pool *redis.Pool, messages chan *sense.MessageParts) {
+func webserver(host, topic string, pool *redis.Pool, messages chan *sense.MessageParts) {
 
 	ph := &PublishHanlder{
 		topic: topic,
@@ -49,7 +38,7 @@ func webserver(topic string, pool *redis.Pool, messages chan *sense.MessageParts
 	}
 
 	http.Handle("/publish", ph)
-	err := http.ListenAndServe(*serverInternalHost, nil)
+	err := http.ListenAndServe(host, nil)
 	if err != nil {
 		panic("ListenAndServe: " + err.Error())
 	}
@@ -62,18 +51,21 @@ func HealthHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	flag.Parse()
+	logger := log.NewLogfmtLogger(os.Stderr)
+	logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "haneda-server")
 
-	if err := config.Parse(*configPath); err != nil {
-		log.Printf("[haneda-server] can't find configuration: %s\n", *configPath)
-		log.Fatal(err)
+	conf := &core.HelloConfig{}
+
+	if _, err := toml.DecodeFile(*configPath, conf); err != nil {
+		logger.Log("configuration-not-found", *configPath)
+		return
 	}
-
-	log.Printf("[haneda-server] Configuration loaded from: %s\n", *configPath)
-	msg := "[haneda-server] Configured to proxy requests to: %s.\n"
-	log.Printf(msg, *proxyEndpoint)
+	logger.Log("action", "configuration-loaded", "path", *configPath)
+	logger.Log("proxy", conf.Proxy.Endpoint)
+	logger.Log("host", conf.Server.ExternalHost)
 
 	redisPool := redis.NewPool(func() (redis.Conn, error) {
-		c, err := redis.Dial("tcp", *redisHost)
+		c, err := redis.Dial("tcp", conf.Redis.Host)
 
 		if err != nil {
 			return nil, err
@@ -90,28 +82,28 @@ func main() {
 	// messages chan is used to push messages outside of the sense connection lifecycle
 	messages := make(chan *sense.MessageParts, 2)
 
-	config := &aws.Config{}
-	config.Region = awsRegion
+	awsConfig := &aws.Config{}
+	awsConfig.Region = &conf.Aws.Region
 
-	if *awsKey != "" && *awsSecret != "" {
-		config.Credentials = credentials.NewStaticCredentials(*awsKey, *awsSecret, "")
+	if conf.Aws.Key != "" && conf.Aws.Secret != "" {
+		awsConfig.Credentials = credentials.NewStaticCredentials(conf.Aws.Key, conf.Aws.Secret, "")
 	}
 
-	ks := sense.NewDynamoDBKeyStore(*keyStoreTable, config)
+	ks := sense.NewDynamoDBKeyStore(conf.Aws.KeyStoreTableName, awsConfig)
 
-	forwarder := core.NewDefaultHttpForwarder(*proxyEndpoint)
+	forwarder := core.NewDefaultHttpForwarder(conf.Proxy.Endpoint)
 
-	simple := core.NewSimpleHelloServer(forwarder, *pubSubKey, redisPool, done, messages, ks)
+	simple := core.NewSimpleHelloServer(forwarder, redisPool, done, messages, ks, conf)
 
 	go simple.Start()
 
 	// todo: implement messeji http handler API
-	go webserver(*pubSubKey, redisPool, messages)
+	go webserver(conf.Server.InternalHost, conf.Redis.PubSub, redisPool, messages)
 
 	http.HandleFunc("/health", HealthHandler)
 	http.Handle("/protobuf", simple)
 
-	err := http.ListenAndServe(*serverExternalHost, nil)
+	err := http.ListenAndServe(conf.Server.ExternalHost, nil)
 	if err != nil {
 		panic("ListenAndServe: " + err.Error())
 	}

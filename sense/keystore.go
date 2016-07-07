@@ -63,3 +63,12 @@ func (k *DynamoDBKeyStore) Get(senseId string) ([]byte, error) {
 	keyBytes, err := hex.DecodeString(*key.S)
 	return keyBytes, err
 }
+
+type FakeKeyStore struct {
+	SenseId string
+	Key     []byte
+}
+
+func (k *FakeKeyStore) Get(senseId string) ([]byte, error) {
+	return k.Key, nil
+}

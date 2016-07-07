@@ -116,7 +116,8 @@ func main() {
 		SignedMessages: signedMessages,
 	}
 
-	go bench.Start()
+	stats := make(chan *core.HelloStat, 10)
+	go bench.Start(stats)
 
 	privKey, _ := hex.DecodeString("AD332E8DFE33490AAF35CA2824ECADC0")
 

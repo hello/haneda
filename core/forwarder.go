@@ -3,13 +3,14 @@ package core
 import (
 	"bytes"
 	"errors"
+	"github.com/go-kit/kit/log"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/hello/haneda/api"
 	"github.com/hello/haneda/haneda"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -18,7 +19,8 @@ const (
 )
 
 var (
-	ErrUnexpectedStatusCode = errors.New("unexpected status code")
+	ErrUnexpectedStatusCode  = errors.New("unexpected status code")
+	ErrEndpointNotConfigured = errors.New("endpoint not configured")
 )
 
 type Forwarder interface {
@@ -46,7 +48,11 @@ func (f *HttpForwarder) PeriodicData(message *api.BatchedPeriodicData, privKey [
 	if err != nil {
 		return []byte{}, err
 	}
-	resp, err := f.PeriodicDataFwd.Do(content, privKey, "/in/sense/batch", http.StatusOK)
+	route, configured := f.routes[haneda.Preamble_BATCHED_PERIODIC_DATA]
+	if !configured {
+		return []byte{}, ErrEndpointNotConfigured
+	}
+	resp, err := f.PeriodicDataFwd.Do(content, privKey, route, http.StatusOK)
 	return resp, err
 }
 
@@ -55,7 +61,12 @@ func (f *HttpForwarder) Logs(message *api.SenseLog, privKey []byte) error {
 	if err != nil {
 		return err
 	}
-	_, err = f.LogsFwd.Do(content, privKey, "/logs", http.StatusNoContent)
+	route, configured := f.routes[haneda.Preamble_SENSE_LOG]
+	if !configured {
+		return ErrEndpointNotConfigured
+	}
+
+	_, err = f.LogsFwd.Do(content, privKey, route, http.StatusNoContent)
 	return err
 }
 
@@ -63,6 +74,7 @@ type GenericForwarder struct {
 	client   *http.Client
 	endpoint string
 	routes   map[haneda.PreamblePbType]string
+	logger   log.Logger
 }
 
 func (f *GenericForwarder) Do(content, privKey []byte, path string, expectedHttpStatusCode int) ([]byte, error) {
@@ -71,6 +83,7 @@ func (f *GenericForwarder) Do(content, privKey []byte, path string, expectedHttp
 
 	signed, err := auth.sign(content)
 	if err != nil {
+		f.logger.Log("error", err)
 		return []byte{}, err
 	}
 
@@ -80,19 +93,20 @@ func (f *GenericForwarder) Do(content, privKey []byte, path string, expectedHttp
 	resp, err := f.client.Do(req)
 
 	if err != nil {
-		log.Println(err)
+		f.logger.Log("error", err)
 		return []byte{}, err
 	}
 
 	if resp.StatusCode != expectedHttpStatusCode {
-		log.Printf("want=%d got=%d endpoint=%s\n", expectedHttpStatusCode, resp.StatusCode, f.endpoint)
+		f.logger.Log("want", expectedHttpStatusCode, "got", resp.StatusCode, "endpoint", f.endpoint)
 		return []byte{}, ErrUnexpectedStatusCode
 	}
 	defer resp.Body.Close()
 	data, err := ioutil.ReadAll(resp.Body)
 	if len(data) > LengthSigPlusIv {
-		return data[48:], err
+		return data[LengthSigPlusIv:], err
 	}
+	f.logger.Log("msg", "response_size_too_short", "response_size", len(data))
 	return []byte{}, err
 }
 
@@ -112,16 +126,23 @@ func NewDefaultHttpForwarder(endpoint string) *HttpForwarder {
 }
 
 func NewHttpForwarder(endpoint string, client *http.Client) *HttpForwarder {
+	logger := log.NewLogfmtLogger(os.Stderr)
+	logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC)
 
 	genForwarder := &GenericForwarder{
 		client:   client,
 		endpoint: endpoint,
+		logger:   logger,
 	}
+
+	routes := make(map[haneda.PreamblePbType]string)
+	routes[haneda.Preamble_BATCHED_PERIODIC_DATA] = "/in/sense/batch"
+	routes[haneda.Preamble_SENSE_LOG] = "/logs"
 
 	fwd := &HttpForwarder{
 		endpoint:           endpoint,
 		client:             client,
-		routes:             make(map[haneda.PreamblePbType]string),
+		routes:             routes,
 		LogsFwd:            genForwarder,
 		PeriodicDataFwd:    genForwarder,
 		MorpheusCommandFwd: genForwarder,

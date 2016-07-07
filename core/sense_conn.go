@@ -1,12 +1,11 @@
 package core
 
 import (
-	"fmt"
+	"github.com/go-kit/kit/log"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
 	"github.com/hello/haneda/haneda"
 	"github.com/hello/haneda/sense"
-	"log"
 	"time"
 )
 
@@ -23,6 +22,7 @@ type SenseConn struct {
 	parser                sense.MessageParser         // parser parses incoming messages
 	bridge                Bridge                      // bridge dispatches proto to http service
 	remover               ConnectionRemover           // removes ws connection when sense disconnects
+	logger                log.Logger
 }
 
 func (c *SenseConn) Send(message *sense.MessageParts) {
@@ -30,27 +30,27 @@ func (c *SenseConn) Send(message *sense.MessageParts) {
 }
 
 func (c *SenseConn) write() {
-	fmt.Println("starting write thread")
+	c.logger.Log("action", "starting write thread")
 outer:
 	for {
 		select {
 		case m := <-c.out:
-			log.Printf("Sending %s Message to: %s\n", m.Header.GetType().String(), m.SenseId)
+			c.logger.Log("action", "sending-message", "msg_type", m.Header.GetType().String())
 			if err := c.Conn.WriteMessage(websocket.BinaryMessage, m.Body); err != nil {
-				fmt.Println(err)
+				c.logger.Log("error", err)
 				break outer
 			}
 		case m := <-c.internalMsgs: // assuming already fully assembled messages
 			if err := c.Conn.WriteMessage(websocket.BinaryMessage, m); err != nil {
-				fmt.Println(err)
+				c.logger.Log("error", err)
 				break outer
 			}
 		}
 	}
-	log.Println("Writing thread stopped for sense", c.SenseId)
+	c.logger.Log("action", "write thread stopped")
 }
 
-func (c *SenseConn) Serve() {
+func (c *SenseConn) Serve(stats chan *HelloStat) {
 	i := 0
 	defer c.Conn.Close()
 
@@ -58,14 +58,17 @@ func (c *SenseConn) Serve() {
 	for {
 		// this is blocking
 		_, content, err := c.Conn.ReadMessage()
+
 		if err != nil {
-			log.Println("Error reading.", err)
+			c.logger.Log("error", err)
+			stats <- &HelloStat{ErrRead: hInt64(1)}
 			break
 		}
+		stats <- &HelloStat{OkRead: hInt64(1)}
 
 		mp, err := c.parser.Parse(content)
 		if err != nil {
-			log.Println(c.SenseId, err)
+			c.logger.Log("error", err)
 			break
 		}
 
@@ -80,8 +83,9 @@ func (c *SenseConn) Serve() {
 		if err != nil {
 			// Override status since bridge responded with error
 			ack.Status = haneda.Ack_CLIENT_REQUEST_ERROR.Enum()
-			fmt.Println(mp.Header.GetId(), "Ack_CLIENT_REQUEST_ERROR")
-			fmt.Println(err)
+			c.logger.Log("action=send-error-ack", "message_id", mp.Header.GetId())
+			c.logger.Log("error", err)
+			stats <- &HelloStat{ErrProxy: hInt64(1)}
 		}
 
 		body, _ := proto.Marshal(ack)
@@ -110,16 +114,16 @@ func (c *SenseConn) Serve() {
 				}
 				outbox = append(outbox, out2)
 			case haneda.Preamble_SENSE_LOG:
-				fmt.Println("Got logs not adding to outbox")
+				c.logger.Log("msg", "ignoring logs")
 			default:
-				log.Println("No response needed")
+				c.logger.Log("msg", "no response needed")
 			}
 		}
 
 		for _, mp := range outbox {
 			serialized, err := c.signer.Sign(mp)
 			if err != nil {
-				log.Println(err)
+				c.logger.Log("error", err)
 				break
 			}
 			c.internalMsgs <- serialized
@@ -127,7 +131,7 @@ func (c *SenseConn) Serve() {
 		i++
 	}
 	c.remover.Remove(c.SenseId)
-	log.Println(c.SenseId, "Processed:", i)
+	c.logger.Log("processed", i)
 }
 
 func (c *SenseConn) Listen(in <-chan *sense.MessageParts) {

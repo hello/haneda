@@ -1,7 +1,7 @@
 package core
 
 import (
-	"fmt"
+	"github.com/go-kit/kit/log"
 	"github.com/hello/haneda/sense"
 )
 
@@ -16,13 +16,14 @@ type ConnectionAdder interface {
 type Hub struct {
 	removeChan     chan sense.SenseId
 	chanBufferSize int
+	logger         log.Logger
 }
 
 func (h *Hub) Remove(senseId sense.SenseId) {
-	fmt.Println("removing", senseId)
+	h.logger.Log("action", "removing", "sense_id", senseId)
 }
 
 func (h *Hub) Add(senseId sense.SenseId) chan *sense.MessageParts {
-	fmt.Println("adding", senseId)
+	h.logger.Log("action", "adding", "sense_id", senseId)
 	return make(chan *sense.MessageParts, h.chanBufferSize)
 }
