@@ -86,11 +86,9 @@ func NewSimpleHelloServer(bridge Bridge, pool *redis.Pool, done chan bool, messa
 	logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "simple-hello-server")
 	hubLogger := log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "hub")
 
-	hub := &Hub{
-		removeChan:     make(chan sense.SenseId, 2),
-		chanBufferSize: 2,
-		logger:         hubLogger,
-	}
+	stats := make(chan *HelloStat, 10)
+
+	hub := NewHub(hubLogger, stats)
 
 	s := &SimpleHelloServer{
 		bridge:   bridge,
@@ -103,12 +101,12 @@ func NewSimpleHelloServer(bridge Bridge, pool *redis.Pool, done chan bool, messa
 		adder:    hub,
 		remover:  hub,
 		logger:   logger,
-		stats:    make(chan *HelloStat, 10),
+		stats:    stats,
 	}
 
 	if helloConf.Graphite != nil {
 		graphiteLogger := log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "graphite")
-		s.metrics = graphite.NewEmitter("tcp", ":8888", helloConf.Graphite.Host, 5*time.Second, graphiteLogger)
+		s.metrics = graphite.NewEmitter("tcp", helloConf.Graphite.Host, helloConf.Graphite.Prefix+".", 5*time.Second, graphiteLogger)
 	}
 
 	return s
@@ -120,12 +118,24 @@ func (s *SimpleHelloServer) Start() {
 	var errParse metrics.Counter
 	var errProxy metrics.Counter
 
+	var currentConnections metrics.Gauge
+	var connDuration metrics.Histogram
+
 	if s.metrics != nil {
 		s.logger.Log("action", "running")
 		errRead = s.metrics.NewCounter("err_read")
 		okRead = s.metrics.NewCounter("ok_read")
 		errParse = s.metrics.NewCounter("err_parse")
 		errProxy = s.metrics.NewCounter("err_proxy")
+		currentConnections = s.metrics.NewGauge("curr_conns")
+		// 50, 90, 95, 99 represent the %ile we care about
+		// 3 sigfigs, I have no clue what it does
+		// max value is a year
+		h, err := s.metrics.NewHistogram("conn_duration", 0, 3600*24*365, 3, 50, 90, 95, 99)
+		if err != nil {
+			panic(err)
+		}
+		connDuration = h
 	}
 
 	for {
@@ -157,25 +167,19 @@ func (s *SimpleHelloServer) Start() {
 					s.logger.Log("errProxy", *stat.ErrProxy)
 					errProxy.Add(*stat.ErrProxy)
 				}
+
+				if stat.CurrConns != nil {
+					s.logger.Log("currConns", *stat.CurrConns)
+					currentConnections.Set(*stat.CurrConns)
+				}
+
+				if stat.ConnDuration != nil {
+					s.logger.Log("connDuration", *stat.ConnDuration)
+					connDuration.Observe(*stat.ConnDuration)
+				}
 			}
 		}
 	}
-}
-
-func (s *SimpleHelloServer) Register(senseId sense.SenseId) chan *sense.MessageParts {
-	s.Lock()
-	defer s.Unlock()
-	c := make(chan *sense.MessageParts)
-	s.pairs[senseId] = c
-	s.logger.Log("action", "add", "sense_id", senseId)
-	return c
-}
-
-func (s *SimpleHelloServer) Remove(senseId sense.SenseId) {
-	s.Lock()
-	defer s.Unlock()
-	delete(s.pairs, senseId)
-	s.logger.Log("action", "remove", "sense_id", senseId)
 }
 
 func dispatch(bridge Bridge, message *sense.MessageParts, s *SenseConn) ([]byte, error) {
