@@ -129,7 +129,7 @@ func (s *SimpleHelloServer) Start() {
 		errProxy = s.metrics.NewCounter("err_proxy")
 		currentConnections = s.metrics.NewGauge("curr_conns")
 		// 50, 90, 95, 99 represent the %ile we care about
-		// 3 sigfigs, I have no clue what it does
+		// sigfigs = 3, I have no clue what it does
 		// max value is a year
 		h, err := s.metrics.NewHistogram("conn_duration", 0, 3600*24*365, 3, 50, 90, 95, 99)
 		if err != nil {
