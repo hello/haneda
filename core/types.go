@@ -14,8 +14,8 @@ type Listener interface {
 	Listen(topic string)
 }
 
-type Sender interface {
-	Send(message *sense.MessageParts)
+type ConnectionSender interface {
+	Send(message *sense.MessageParts) error
 }
 
 type SimpleWsHandler struct {
@@ -33,6 +33,7 @@ type SimpleHelloServer struct {
 	keystore sense.KeyStore
 	adder    ConnectionAdder
 	remover  ConnectionRemover
+	sender   ConnectionSender
 	logger   log.Logger
 	metrics  *graphite.Emitter
 	stats    chan *HelloStat

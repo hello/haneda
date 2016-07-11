@@ -10,8 +10,8 @@ import (
 	"github.com/hello/haneda/api"
 	"github.com/hello/haneda/haneda"
 	"github.com/hello/haneda/sense"
+	"io"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -50,8 +50,8 @@ func (s *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	c := s.adder.Add(senseId)
 
 	auth := sense.NewSenseAuthHmacSha1(key, senseId)
-	logger := log.NewLogfmtLogger(os.Stderr)
-	logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "sense_id", senseId, "ip_address", r.RemoteAddr)
+
+	logger := log.NewContext(s.logger).With("ts", log.DefaultTimestampUTC, "sense_id", senseId, "ip_address", r.RemoteAddr)
 
 	senseConn := &SenseConn{
 		SenseId:               senseId,
@@ -80,12 +80,13 @@ func (s *SimpleHelloServer) Shutdown() {
 	close(s.messages)
 }
 
-func NewSimpleHelloServer(bridge Bridge, pool *redis.Pool, done chan bool, messages chan *sense.MessageParts, ks sense.KeyStore, helloConf *HelloConfig) *SimpleHelloServer {
+func NewSimpleHelloServer(w io.Writer, bridge Bridge, pool *redis.Pool, done chan bool, messages chan *sense.MessageParts, ks sense.KeyStore, helloConf *HelloConfig) *SimpleHelloServer {
 
-	logger := log.NewLogfmtLogger(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
 	logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "simple-hello-server")
 	hubLogger := log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "hub")
 
+	logger.Log("making", "stats", "cap", 10)
 	stats := make(chan *HelloStat, 10)
 
 	hub := NewHub(hubLogger, stats)
@@ -100,19 +101,22 @@ func NewSimpleHelloServer(bridge Bridge, pool *redis.Pool, done chan bool, messa
 		keystore: ks,
 		adder:    hub,
 		remover:  hub,
+		sender:   hub,
 		logger:   logger,
 		stats:    stats,
 	}
 
 	if helloConf.Graphite != nil {
+		logger.Log("metrics", "enabled")
 		graphiteLogger := log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "graphite")
 		s.metrics = graphite.NewEmitter("tcp", helloConf.Graphite.Host, helloConf.Graphite.Prefix+".", 5*time.Second, graphiteLogger)
 	}
-
+	logger.Log("simple", "starting")
 	return s
 }
 
 func (s *SimpleHelloServer) Start() {
+	s.logger.Log("server", "start")
 	var errRead metrics.Counter
 	var okRead metrics.Counter
 	var errParse metrics.Counter
@@ -141,12 +145,7 @@ func (s *SimpleHelloServer) Start() {
 	for {
 		select {
 		case m := <-s.messages:
-			c, found := s.pairs[m.SenseId]
-			if found {
-				c <- m
-			} else {
-				s.logger.Log("sense_id", m.SenseId)
-			}
+			s.sender.Send(m)
 		case stat := <-s.stats:
 			if s.metrics != nil {
 				if stat.ErrRead != nil {
@@ -194,6 +193,13 @@ func dispatch(bridge Bridge, message *sense.MessageParts, s *SenseConn) ([]byte,
 		m := &api.BatchedPeriodicData{}
 		proto.Unmarshal(message.Body, m)
 		return bridge.PeriodicData(m, s.PrivKey)
+	case haneda.Preamble_MORPHEUS_COMMAND:
+		m := &api.MorpheusCommand{}
+		err := proto.Unmarshal(message.Body, m)
+		if err != nil {
+			return empty, err
+		}
+		return bridge.Pair(m, s.PrivKey)
 	default:
 		// fmt.Println("Unknown", messageParts.Header.GetType().String())
 	}

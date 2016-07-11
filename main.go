@@ -93,7 +93,7 @@ func main() {
 
 	forwarder := core.NewDefaultHttpForwarder(conf.Proxy.Endpoint)
 
-	simple := core.NewSimpleHelloServer(forwarder, redisPool, done, messages, ks, conf)
+	simple := core.NewSimpleHelloServer(os.Stderr, forwarder, redisPool, done, messages, ks, conf)
 
 	go simple.Start()
 

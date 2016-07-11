@@ -53,14 +53,11 @@ outer:
 func (c *SenseConn) Serve(stats chan *HelloStat) {
 	i := 0
 	defer c.Conn.Close()
-	c.logger.Log("type", "yo")
 	go c.write()
 	for {
 		// this is blocking
 		_, content, err := c.Conn.ReadMessage()
-
 		if err != nil {
-			c.logger.Log("error", err)
 			stats <- &HelloStat{ErrRead: hUint64(1)}
 			break
 		}
@@ -68,7 +65,7 @@ func (c *SenseConn) Serve(stats chan *HelloStat) {
 
 		mp, err := c.parser.Parse(content)
 		if err != nil {
-			c.logger.Log("error", err)
+			c.logger.Log("parse_error", err)
 			break
 		}
 
@@ -97,7 +94,7 @@ func (c *SenseConn) Serve(stats chan *HelloStat) {
 			Header: header,
 			Body:   body,
 		}
-
+		c.logger.Log("sending_ack", ack.GetMessageId())
 		outbox = append(outbox, out)
 
 		// response from server might be empty
@@ -113,8 +110,17 @@ func (c *SenseConn) Serve(stats chan *HelloStat) {
 					Body:   resp,
 				}
 				outbox = append(outbox, out2)
-			case haneda.Preamble_SENSE_LOG:
-				c.logger.Log("msg", "ignoring logs")
+			case haneda.Preamble_MORPHEUS_COMMAND:
+				c.logger.Log("cmd", "command buddy")
+				cmdHeader := &haneda.Preamble{}
+				cmdHeader.Type = haneda.Preamble_MORPHEUS_COMMAND.Enum()
+				cmdHeader.Id = proto.Uint64(uint64(time.Now().UnixNano()))
+
+				m := &sense.MessageParts{
+					Header: header,
+					Body:   resp,
+				}
+				outbox = append(outbox, m)
 			default:
 				c.logger.Log("msg", "no response needed")
 			}

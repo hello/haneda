@@ -25,7 +25,7 @@ func basicAuth(username, password string) string {
 	return base64.StdEncoding.EncodeToString([]byte(auth))
 }
 
-func displayName(s sense.Client) {
+func displayName(s sense.Device) {
 	log.Println(s.Id())
 }
 
