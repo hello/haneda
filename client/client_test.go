@@ -4,7 +4,6 @@ import (
 	"github.com/hello/haneda/api"
 	"github.com/hello/haneda/core"
 	"github.com/hello/haneda/sense"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,8 +14,8 @@ import (
 )
 
 var (
-	senseId = sense.SenseId("name")
-	key     = []byte("qwertyuiop")
+	senseId = sense.SenseId("fake_sense")
+	key     = []byte("1234567891234567")
 	ks      = &sense.FakeKeyStore{SenseId: string(senseId), Key: key}
 	conf    = &core.HelloConfig{
 		Redis: &core.RedisConfig{
@@ -39,7 +38,7 @@ func TestConnectDisconnect(t *testing.T) {
 	done := make(chan bool, 0)
 	messages := make(chan *sense.MessageParts, 0)
 
-	simple := core.NewSimpleHelloServer(ioutil.Discard, &core.NoopBridge{}, nil, done, messages, ks, conf)
+	simple := core.NewSimpleHelloServer(&core.NoopBridge{}, nil, done, messages, ks, conf)
 	go simple.Start()
 	defer simple.Shutdown()
 	ts := httptest.NewServer(simple)
@@ -68,7 +67,7 @@ func TestReadTimeout(t *testing.T) {
 	done := make(chan bool, 0)
 	messages := make(chan *sense.MessageParts, 0)
 
-	simple := core.NewSimpleHelloServer(ioutil.Discard, &core.NoopBridge{}, nil, done, messages, ks, conf)
+	simple := core.NewSimpleHelloServer(&core.NoopBridge{}, nil, done, messages, ks, conf)
 	go simple.Start()
 	defer simple.Shutdown()
 
@@ -105,7 +104,7 @@ func TestPair(t *testing.T) {
 		},
 	}
 
-	simple := core.NewSimpleHelloServer(ioutil.Discard, bridge, nil, done, messages, ks, conf)
+	simple := core.NewSimpleHelloServer(bridge, nil, done, messages, ks, conf)
 	go simple.Start()
 	defer simple.Shutdown()
 

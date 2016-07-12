@@ -2,7 +2,6 @@ package core
 
 import (
 	"github.com/garyburd/redigo/redis"
-	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/metrics/graphite"
 	"github.com/hello/haneda/sense"
 	"sync"
@@ -34,7 +33,7 @@ type SimpleHelloServer struct {
 	adder    ConnectionAdder
 	remover  ConnectionRemover
 	sender   ConnectionSender
-	logger   log.Logger
+	loggers  *Loggers
 	metrics  *graphite.Emitter
 	stats    chan *HelloStat
 }

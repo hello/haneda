@@ -135,7 +135,9 @@ func GenPeriodic(messageId uint64) (*MessageParts, error) {
 	batched := &api.BatchedPeriodicData{}
 	periodic := &api.PeriodicData{}
 	periodic.Temperature = proto.Int32(3500)
-
+	ts := int32(time.Now().Unix() / 1000)
+	fmt.Println("ts", ts)
+	periodic.UnixTime = proto.Int32(ts)
 	n := string("bench-client")
 	batched.DeviceId = &n
 	batched.FirmwareVersion = proto.Int32(888)

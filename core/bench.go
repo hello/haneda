@@ -3,8 +3,9 @@ package core
 import (
 	"github.com/go-kit/kit/log"
 	"github.com/hello/haneda/sense"
+	"io"
+	"io/ioutil"
 	"net/http"
-	"os"
 )
 
 type BenchServer struct {
@@ -16,6 +17,16 @@ type BenchServer struct {
 	Logger         log.Logger
 }
 
+func loggers(w io.Writer) *Loggers {
+	logger := log.NewLogfmtLogger(w)
+	logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "bench")
+	return &Loggers{
+		Debug: logger,
+		Info:  logger,
+		Warn:  logger,
+		Error: logger,
+	}
+}
 func (s *BenchServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	s.Logger.Log("Serving http req")
@@ -26,8 +37,6 @@ func (s *BenchServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	senseId := sense.SenseId("fake")
-	logger := log.NewLogfmtLogger(os.Stderr)
-	logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "bench")
 
 	senseConn := &SenseConn{
 		SenseId:               senseId,
@@ -39,7 +48,7 @@ func (s *BenchServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		internalMsgs:          s.SignedMessages,
 		bridge:                s.Bridge,
 		remover:               s.Remover,
-		logger:                logger,
+		loggers:               loggers(ioutil.Discard),
 	}
 	stats := make(chan *HelloStat, 10)
 	go senseConn.Serve(stats)

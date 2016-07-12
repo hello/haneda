@@ -140,12 +140,13 @@ func (f *GenericForwarder) Do(content, privKey []byte, path string, expectedHttp
 		f.logger.Log("want", expectedHttpStatusCode, "got", resp.StatusCode, "endpoint", f.endpoint)
 		return []byte{}, ErrUnexpectedStatusCode
 	}
+
 	defer resp.Body.Close()
 	data, err := ioutil.ReadAll(resp.Body)
 	if len(data) > LengthSigPlusIv {
 		return data[LengthSigPlusIv:], err
 	}
-	f.logger.Log("msg", "response_size_too_short", "response_size", len(data))
+	f.logger.Log("error", "response_size_too_short", "path", path, "response_size", len(data))
 	return []byte{}, ErrTooShort
 }
 
@@ -176,7 +177,7 @@ func NewHttpForwarder(endpoint string, client *http.Client) *HttpForwarder {
 
 	routes := map[haneda.PreamblePbType]string{
 		haneda.Preamble_BATCHED_PERIODIC_DATA: "/in/sense/batch",
-		haneda.Preamble_MORPHEUS_COMMAND:      "/register", // ends with / to append morpheus|pill
+		haneda.Preamble_MORPHEUS_COMMAND:      "/register", // need to append morpheus/pill
 		haneda.Preamble_SENSE_LOG:             "/logs",
 		haneda.Preamble_SENSE_STATE:           "/in/sense/state",
 	}

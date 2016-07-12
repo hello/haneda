@@ -10,7 +10,6 @@ import (
 	"github.com/hello/haneda/api"
 	"github.com/hello/haneda/haneda"
 	"github.com/hello/haneda/sense"
-	"io"
 	"net/http"
 	"time"
 )
@@ -26,23 +25,23 @@ func (s *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// }
 
 	connectedSense := r.Header.Get("X-Hello-Sense-Id")
-	s.logger.Log("action", "connection-attempt", "sense_id", connectedSense, "ip_address", r.RemoteAddr)
+	s.loggers.Info.Log("action", "connection-attempt", "sense_id", connectedSense, "ip_address", r.RemoteAddr)
 	if connectedSense == "" {
-		s.logger.Log("error", "missing_header", "ip_address", r.RemoteAddr)
+		s.loggers.Error.Log("error", "missing_header", "ip_address", r.RemoteAddr)
 		http.Error(w, "Missing header with Sense ID", 400)
 		return
 	}
 
 	key, err := s.keystore.Get(connectedSense)
 	if err != nil {
-		s.logger.Log("action", "key_store_connect", "error", err, "sense_id", connectedSense)
+		s.loggers.Error.Log("action", "key_store_connect", "error", err, "sense_id", connectedSense)
 		http.Error(w, "Server error", 500)
 		return
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		s.logger.Log("error", err, "reason", "failed_upgrading_ws")
+		s.loggers.Error.Log("error", err, "reason", "failed_upgrading_ws")
 		return
 	}
 
@@ -51,7 +50,12 @@ func (s *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	auth := sense.NewSenseAuthHmacSha1(key, senseId)
 
-	logger := log.NewContext(s.logger).With("ts", log.DefaultTimestampUTC, "sense_id", senseId, "ip_address", r.RemoteAddr)
+	contextLoggers := &Loggers{
+		Debug: log.NewContext(s.loggers.Debug).With("app", "simple-hello-server"),
+		Info:  log.NewContext(s.loggers.Info).With("app", "simple-hello-server"),
+		Warn:  log.NewContext(s.loggers.Warn).With("app", "simple-hello-server"),
+		Error: log.NewContext(s.loggers.Error).With("app", "simple-hello-server"),
+	}
 
 	senseConn := &SenseConn{
 		SenseId:               senseId,
@@ -65,7 +69,7 @@ func (s *SimpleHelloServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		remover:               s.remover,
 		signer:                auth,
 		parser:                auth,
-		logger:                logger,
+		loggers:               contextLoggers,
 	}
 
 	go senseConn.Serve(s.stats)
@@ -80,13 +84,12 @@ func (s *SimpleHelloServer) Shutdown() {
 	close(s.messages)
 }
 
-func NewSimpleHelloServer(w io.Writer, bridge Bridge, pool *redis.Pool, done chan bool, messages chan *sense.MessageParts, ks sense.KeyStore, helloConf *HelloConfig) *SimpleHelloServer {
+func NewSimpleHelloServer(bridge Bridge, pool *redis.Pool, done chan bool, messages chan *sense.MessageParts, ks sense.KeyStore, helloConf *HelloConfig) *SimpleHelloServer {
 
-	logger := log.NewLogfmtLogger(w)
-	logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "simple-hello-server")
-	hubLogger := log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "hub")
+	contextLoggers := LoggersFromConfig(helloConf.Loggers, "simple-hello-server")
 
-	logger.Log("making", "stats", "cap", 10)
+	hubLogger := log.NewContext(contextLoggers.Info).With("app", "hub")
+
 	stats := make(chan *HelloStat, 10)
 
 	hub := NewHub(hubLogger, stats)
@@ -102,21 +105,21 @@ func NewSimpleHelloServer(w io.Writer, bridge Bridge, pool *redis.Pool, done cha
 		adder:    hub,
 		remover:  hub,
 		sender:   hub,
-		logger:   logger,
+		loggers:  contextLoggers,
 		stats:    stats,
 	}
 
 	if helloConf.Graphite != nil {
-		logger.Log("metrics", "enabled")
-		graphiteLogger := log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "app", "graphite")
+		contextLoggers.Info.Log("metrics", "enabled")
+		graphiteLogger := log.NewContext(contextLoggers.Debug).With("app", "graphite")
 		s.metrics = graphite.NewEmitter("tcp", helloConf.Graphite.Host, helloConf.Graphite.Prefix+".", 5*time.Second, graphiteLogger)
 	}
-	logger.Log("simple", "starting")
+	contextLoggers.Info.Log("simple", "starting")
 	return s
 }
 
 func (s *SimpleHelloServer) Start() {
-	s.logger.Log("server", "start")
+	s.loggers.Info.Log("server", "start")
 	var errRead metrics.Counter
 	var okRead metrics.Counter
 	var errParse metrics.Counter
@@ -126,7 +129,7 @@ func (s *SimpleHelloServer) Start() {
 	var connDuration metrics.Histogram
 
 	if s.metrics != nil {
-		s.logger.Log("action", "running")
+		s.loggers.Info.Log("action", "running")
 		errRead = s.metrics.NewCounter("err_read")
 		okRead = s.metrics.NewCounter("ok_read")
 		errParse = s.metrics.NewCounter("err_parse")
@@ -149,31 +152,29 @@ func (s *SimpleHelloServer) Start() {
 		case stat := <-s.stats:
 			if s.metrics != nil {
 				if stat.ErrRead != nil {
-					s.logger.Log("errRead", *stat.ErrRead)
+					s.loggers.Debug.Log("context", "stats", "errRead", *stat.ErrRead)
 					errRead.Add(*stat.ErrRead)
 				}
 				if stat.OkRead != nil {
-					s.logger.Log("okRead", *stat.OkRead)
 					okRead.Add(*stat.OkRead)
 				}
 
 				if stat.ErrParse != nil {
-					s.logger.Log("errParse", *stat.ErrParse)
+					s.loggers.Debug.Log("context", "stats", "errParse", *stat.ErrParse)
 					errParse.Add(*stat.ErrParse)
 				}
 
 				if stat.ErrProxy != nil {
-					s.logger.Log("errProxy", *stat.ErrProxy)
+					s.loggers.Debug.Log("context", "stats", "errProxy", *stat.ErrProxy)
 					errProxy.Add(*stat.ErrProxy)
 				}
 
 				if stat.CurrConns != nil {
-					s.logger.Log("currConns", *stat.CurrConns)
+					s.loggers.Debug.Log("context", "stats", "currConns", *stat.CurrConns)
 					currentConnections.Set(*stat.CurrConns)
 				}
 
 				if stat.ConnDuration != nil {
-					s.logger.Log("connDuration", *stat.ConnDuration)
 					connDuration.Observe(*stat.ConnDuration)
 				}
 			}
@@ -192,7 +193,21 @@ func dispatch(bridge Bridge, message *sense.MessageParts, s *SenseConn) ([]byte,
 	case haneda.Preamble_BATCHED_PERIODIC_DATA:
 		m := &api.BatchedPeriodicData{}
 		proto.Unmarshal(message.Body, m)
-		return bridge.PeriodicData(m, s.PrivKey)
+		content, err := bridge.PeriodicData(m, s.PrivKey)
+		if err != nil {
+			return empty, err
+		}
+		// remove OTA from sync response
+		sr := &api.SyncResponse{}
+		protoErr := proto.Unmarshal(content, sr)
+		if protoErr != nil {
+			return empty, protoErr
+		}
+		if len(sr.GetFiles()) > 0 {
+			s.loggers.Warn.Log("action", "clear-ota", "num_files", len(sr.GetFiles()))
+			sr.Files = []*api.SyncResponse_FileDownload{}
+		}
+		return proto.Marshal(sr)
 	case haneda.Preamble_MORPHEUS_COMMAND:
 		m := &api.MorpheusCommand{}
 		err := proto.Unmarshal(message.Body, m)

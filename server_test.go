@@ -42,7 +42,7 @@ func TestConnectToWebSocketServer(t *testing.T) {
 	done := make(chan bool, 0)
 	messages := make(chan *sense.MessageParts, 0)
 
-	simple := core.NewSimpleHelloServer(ioutil.Discard, &FakePeriodicDataBrigde{}, nil, done, messages, ks, conf)
+	simple := core.NewSimpleHelloServer(&FakePeriodicDataBrigde{}, nil, done, messages, ks, conf)
 
 	ts := httptest.NewServer(simple)
 	defer ts.Close()
@@ -72,7 +72,7 @@ func TestWrite(t *testing.T) {
 	done := make(chan bool, 0)
 	messages := make(chan *sense.MessageParts, 0)
 
-	simple := core.NewSimpleHelloServer(ioutil.Discard, &FakePeriodicDataBrigde{}, nil, done, messages, ks, conf)
+	simple := core.NewSimpleHelloServer(&FakePeriodicDataBrigde{}, nil, done, messages, ks, conf)
 
 	ts := httptest.NewServer(simple)
 	defer ts.Close()
@@ -108,7 +108,7 @@ func TestPingPong(t *testing.T) {
 	done := make(chan bool, 0)
 	messages := make(chan *sense.MessageParts, 0)
 
-	simple := core.NewSimpleHelloServer(ioutil.Discard, &FakePeriodicDataBrigde{}, nil, done, messages, ks, conf)
+	simple := core.NewSimpleHelloServer(&FakePeriodicDataBrigde{}, nil, done, messages, ks, conf)
 
 	ts := httptest.NewServer(simple)
 	defer ts.Close()

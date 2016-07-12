@@ -1,7 +1,6 @@
 package core
 
 import (
-	"github.com/go-kit/kit/log"
 	proto "github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
 	"github.com/hello/haneda/haneda"
@@ -22,7 +21,7 @@ type SenseConn struct {
 	parser                sense.MessageParser         // parser parses incoming messages
 	bridge                Bridge                      // bridge dispatches proto to http service
 	remover               ConnectionRemover           // removes ws connection when sense disconnects
-	logger                log.Logger
+	loggers               *Loggers
 }
 
 func (c *SenseConn) Send(message *sense.MessageParts) {
@@ -30,24 +29,24 @@ func (c *SenseConn) Send(message *sense.MessageParts) {
 }
 
 func (c *SenseConn) write() {
-	c.logger.Log("action", "starting write thread")
+	c.loggers.Info.Log("action", "starting write thread")
 outer:
 	for {
 		select {
 		case m := <-c.out:
-			c.logger.Log("action", "sending-message", "msg_type", m.Header.GetType().String())
+			c.loggers.Debug.Log("action", "sending-message", "msg_type", m.Header.GetType().String())
 			if err := c.Conn.WriteMessage(websocket.BinaryMessage, m.Body); err != nil {
-				c.logger.Log("error", err)
+				c.loggers.Error.Log("error", err)
 				break outer
 			}
 		case m := <-c.internalMsgs: // assuming already fully assembled messages
 			if err := c.Conn.WriteMessage(websocket.BinaryMessage, m); err != nil {
-				c.logger.Log("error", err)
+				c.loggers.Error.Log("error", err)
 				break outer
 			}
 		}
 	}
-	c.logger.Log("action", "write thread stopped")
+	c.loggers.Info.Log("action", "write thread stopped")
 }
 
 func (c *SenseConn) Serve(stats chan *HelloStat) {
@@ -65,7 +64,7 @@ func (c *SenseConn) Serve(stats chan *HelloStat) {
 
 		mp, err := c.parser.Parse(content)
 		if err != nil {
-			c.logger.Log("parse_error", err)
+			c.loggers.Error.Log("parse_error", err)
 			break
 		}
 
@@ -80,8 +79,8 @@ func (c *SenseConn) Serve(stats chan *HelloStat) {
 		if err != nil {
 			// Override status since bridge responded with error
 			ack.Status = haneda.Ack_CLIENT_REQUEST_ERROR.Enum()
-			c.logger.Log("action=send-error-ack", "message_id", mp.Header.GetId())
-			c.logger.Log("error", err)
+			c.loggers.Error.Log("action=send-error-ack", "message_id", mp.Header.GetId())
+			c.loggers.Error.Log("error", err)
 			stats <- &HelloStat{ErrProxy: hUint64(1)}
 		}
 
@@ -94,7 +93,7 @@ func (c *SenseConn) Serve(stats chan *HelloStat) {
 			Header: header,
 			Body:   body,
 		}
-		c.logger.Log("sending_ack", ack.GetMessageId())
+		c.loggers.Debug.Log("sending_ack", ack.GetMessageId())
 		outbox = append(outbox, out)
 
 		// response from server might be empty
@@ -111,7 +110,6 @@ func (c *SenseConn) Serve(stats chan *HelloStat) {
 				}
 				outbox = append(outbox, out2)
 			case haneda.Preamble_MORPHEUS_COMMAND:
-				c.logger.Log("cmd", "command buddy")
 				cmdHeader := &haneda.Preamble{}
 				cmdHeader.Type = haneda.Preamble_MORPHEUS_COMMAND.Enum()
 				cmdHeader.Id = proto.Uint64(uint64(time.Now().UnixNano()))
@@ -122,14 +120,14 @@ func (c *SenseConn) Serve(stats chan *HelloStat) {
 				}
 				outbox = append(outbox, m)
 			default:
-				c.logger.Log("msg", "no response needed")
+				c.loggers.Info.Log("msg", "no response needed")
 			}
 		}
 
 		for _, mp := range outbox {
 			serialized, err := c.signer.Sign(mp)
 			if err != nil {
-				c.logger.Log("error", err)
+				c.loggers.Error.Log("error", err)
 				break
 			}
 			c.internalMsgs <- serialized
@@ -137,7 +135,7 @@ func (c *SenseConn) Serve(stats chan *HelloStat) {
 		i++
 	}
 	c.remover.Remove(c.SenseId)
-	c.logger.Log("processed", i)
+	c.loggers.Info.Log("processed", i)
 }
 
 func (c *SenseConn) Listen(in <-chan *sense.MessageParts) {
