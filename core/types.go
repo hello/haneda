@@ -2,7 +2,6 @@ package core
 
 import (
 	"github.com/garyburd/redigo/redis"
-	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/metrics/graphite"
 	"github.com/hello/haneda/sense"
 	"sync"
@@ -14,8 +13,8 @@ type Listener interface {
 	Listen(topic string)
 }
 
-type Sender interface {
-	Send(message *sense.MessageParts)
+type ConnectionSender interface {
+	Send(message *sense.MessageParts) error
 }
 
 type SimpleWsHandler struct {
@@ -33,7 +32,8 @@ type SimpleHelloServer struct {
 	keystore sense.KeyStore
 	adder    ConnectionAdder
 	remover  ConnectionRemover
-	logger   log.Logger
+	sender   ConnectionSender
+	loggers  *Loggers
 	metrics  *graphite.Emitter
 	stats    chan *HelloStat
 }

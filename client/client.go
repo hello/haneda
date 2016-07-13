@@ -25,7 +25,7 @@ func basicAuth(username, password string) string {
 	return base64.StdEncoding.EncodeToString([]byte(auth))
 }
 
-func displayName(s sense.Client) {
+func displayName(s sense.Device) {
 	log.Println(s.Id())
 }
 
@@ -46,7 +46,7 @@ func main() {
 
 	for i := 0; i < 1; i++ {
 		name := fmt.Sprintf("Sense%d", i)
-		name = "XXXXXXXXXXXXXXXX"
+		name = "fake_sense"
 
 		privKey := []byte("1234567891234567")
 		fakeSense := &sense.Sense15{

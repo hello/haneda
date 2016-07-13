@@ -32,4 +32,12 @@ type HelloConfig struct {
 	Redis    *RedisConfig
 	Aws      *AwsConfig
 	Graphite *GraphiteConfig
+	Loggers  *LoggersConfig
+}
+
+type LoggersConfig struct {
+	Debug bool
+	Info  bool
+	Warn  bool
+	Error bool
 }

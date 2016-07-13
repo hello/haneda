@@ -1,10 +1,16 @@
 package core
 
 import (
+	"errors"
 	"github.com/go-kit/kit/log"
 	"github.com/hello/haneda/sense"
 	"sync"
 	"time"
+)
+
+var (
+	ErrSenseNotConnected = errors.New("sense not connected")
+	ErrInvalidMessage    = errors.New("invalid mp. missing sense id")
 )
 
 type ConnectionRemover interface {
@@ -18,6 +24,7 @@ type ConnectionAdder interface {
 type Hub struct {
 	sync.Mutex
 	pairs          map[string]time.Time // map[string] because map[SenseId] always returns a different pointer value
+	chanPairs      map[string]chan *sense.MessageParts
 	chanBufferSize int
 	logger         log.Logger
 	stats          chan *HelloStat
@@ -26,11 +33,29 @@ type Hub struct {
 func NewHub(logger log.Logger, stats chan *HelloStat) *Hub {
 	return &Hub{
 		pairs:          make(map[string]time.Time),
+		chanPairs:      make(map[string]chan *sense.MessageParts),
 		chanBufferSize: 2,
 		logger:         logger,
 		stats:          stats,
 	}
 }
+
+func (h *Hub) Send(mp *sense.MessageParts) error {
+
+	if mp == nil || mp.SenseId == "" {
+		return ErrInvalidMessage
+	}
+
+	h.Lock()
+	c, found := h.chanPairs[string(mp.SenseId)]
+	h.Unlock()
+	if !found {
+		return ErrSenseNotConnected
+	}
+	c <- mp // potentially blocking?
+	return nil
+}
+
 func (h *Hub) Remove(senseId sense.SenseId) {
 	h.logger.Log("action", "removing", "sense_id", senseId)
 	h.Lock()
@@ -57,5 +82,7 @@ func (h *Hub) Add(senseId sense.SenseId) chan *sense.MessageParts {
 	defer h.Unlock()
 	h.pairs[string(senseId)] = time.Now()
 	h.stats <- &HelloStat{CurrConns: hFloat(len(h.pairs))}
-	return make(chan *sense.MessageParts, h.chanBufferSize)
+	c := make(chan *sense.MessageParts, h.chanBufferSize)
+	h.chanPairs[string(senseId)] = c
+	return c
 }

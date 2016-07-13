@@ -27,11 +27,9 @@ var (
 
 type BenchClient struct {
 	auth   sense.MessageSigner
-	funcs  []genFunc
+	funcs  []sense.GenFunc
 	logger log.Logger
 }
-
-type genFunc func(msgId uint64) (*sense.MessageParts, error)
 
 func (b *BenchClient) genRandomMessage(i int) ([]byte, error) {
 	var mp *sense.MessageParts

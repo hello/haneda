@@ -17,13 +17,108 @@ import (
 	"time"
 )
 
-type Client interface {
+type Device interface {
 	Id() string
 	Connect(u *url.URL, h http.Header) error
 	Disconnect() error
 	Send(t time.Duration)
 	Receive()
 	Write(message []byte) error
+	Read(t time.Duration) ([]byte, error)
+}
+
+type Sense interface {
+	Plug() error
+	Pair() error
+	Unplug() error
+}
+
+type SenseOneFive struct {
+	device Device
+	token  string
+	auth   *SenseAuthHmacSha1
+	logger log.Logger
+}
+
+func NewSenseOneFive(token, deviceId string, sense *Sense15) *SenseOneFive {
+	return &SenseOneFive{
+		device: sense,
+		token:  token,
+		auth:   sense.Auth,
+		logger: sense.logger,
+	}
+}
+
+func (s *SenseOneFive) Pair() error {
+
+	gen := PairingMessageGenerator{
+		DeviceId:      SenseId(s.device.Id()),
+		Token:         s.token,
+		MorpheusType:  api.MorpheusCommand_MORPHEUS_COMMAND_PAIR_SENSE.Enum(),
+		MorpheusError: nil,
+	}
+
+	mp, err := gen.Do(uint64(time.Now().UnixNano()))
+	if err != nil {
+		return err
+	}
+
+	signed, _ := s.auth.Sign(mp)
+
+	wErr := s.device.Write(signed)
+
+	if wErr != nil {
+		return wErr
+	}
+
+	ack, rErr := s.device.Read(10 * time.Second) // ack
+
+	if rErr != nil {
+		return rErr
+	}
+
+	mp, parseErr := s.auth.Parse(ack)
+	if parseErr != nil {
+		return parseErr
+	}
+
+	ackPb := &haneda.Ack{}
+
+	ackErr := proto.Unmarshal(mp.Body, ackPb)
+	if ackErr != nil {
+		return ackErr
+	}
+
+	msg, rErr := s.device.Read(10 * time.Second)
+
+	if rErr != nil {
+		return rErr
+	}
+
+	mp, parseErr = s.auth.Parse(msg)
+	if parseErr != nil {
+		return parseErr
+	}
+
+	cmd := &api.MorpheusCommand{}
+	protoErr := proto.Unmarshal(mp.Body, cmd)
+
+	if protoErr != nil {
+		return protoErr
+	}
+
+	if cmd.Error != nil {
+		return errors.New(cmd.Error.String())
+	}
+	return nil
+}
+
+func (s *SenseOneFive) Unplug() error {
+	return s.device.Disconnect()
+}
+
+func (s *SenseOneFive) Plug(u *url.URL, headers http.Header) error {
+	return s.device.Connect(u, headers)
 }
 
 type Sense15 struct {
@@ -65,7 +160,9 @@ func (s *Sense15) periodic(messageId uint64) *MessageParts {
 	batched := &api.BatchedPeriodicData{}
 	periodic := &api.PeriodicData{}
 	periodic.Temperature = proto.Int32(3500)
-
+	ts := int32(time.Now().Unix())
+	fmt.Println("ts", ts)
+	periodic.UnixTime = proto.Int32(ts)
 	n := string(s.Name)
 	batched.DeviceId = &n
 	batched.FirmwareVersion = proto.Int32(888)
@@ -265,7 +362,7 @@ func NewDefaultSenseOneFive(sense *Sense15) *Sense15 {
 	}
 	if sense.logger == nil {
 		logger := log.NewLogfmtLogger(os.Stderr)
-		sense.logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "sense_id", sense.Name)
+		sense.logger = log.NewContext(logger).With("app", "client", "ts", log.DefaultTimestampUTC, "sense_id", sense.Name)
 	}
 	return sense
 }
@@ -273,7 +370,7 @@ func NewDefaultSenseOneFive(sense *Sense15) *Sense15 {
 func New15(senseId SenseId, interrupt chan os.Signal, done chan bool, privKey []byte) *Sense15 {
 	store := NewStore()
 	logger := log.NewLogfmtLogger(os.Stderr)
-	logger = log.NewContext(logger).With("ts", log.DefaultTimestampUTC, "sense_id", senseId)
+	logger = log.NewContext(logger).With("app", "client", "ts", log.DefaultTimestampUTC, "sense_id", senseId)
 
 	return &Sense15{
 		Interrupt: interrupt,
